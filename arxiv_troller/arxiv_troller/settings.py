@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+import sys
 
 from dotenv import load_dotenv
 
@@ -87,8 +88,14 @@ DATABASES = {
         "PASSWORD": os.getenv("DB_PASS"),
         "HOST": os.getenv("DB_HOST"),
         "PORT": os.getenv("DB_PORT"),
+        'CONN_MAX_AGE': 600,
     }
 }
+
+if 'load_existing_records' in sys.argv:
+    MIGRATION_MODULES = {
+        'papers': None,
+    }
 
 
 # Password validation
