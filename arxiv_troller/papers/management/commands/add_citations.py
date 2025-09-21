@@ -14,6 +14,7 @@ class Command(BaseCommand):
         for paper in tqdm(papers):
             try:
                 self.get_citations_for_paper(paper)
+                time.sleep(1)  # Rate limiting
             except Exception as e:
                 self.stdout.write(f"Error processing {paper.arxiv_id}: {e}")
 
@@ -22,12 +23,15 @@ class Command(BaseCommand):
         params = {"fields": "citingPaper.paperId,citingPaper.externalIds", "limit": 500}
 
         response = requests.get(url, params=params)
+        print(response)
         if response.status_code == 200:
             data = response.json()
+            print(data)
 
             for citation_data in data.get("data", []):
                 citing_paper_info = citation_data["citingPaper"]
                 external_ids = citing_paper_info.get("externalIds", {})
+                print(external_ids)
 
                 if external_ids.get("ArXiv"):
                     citing_arxiv_id = external_ids["ArXiv"]
@@ -35,4 +39,5 @@ class Command(BaseCommand):
                         citing_paper = Paper.objects.get(arxiv_id=citing_arxiv_id)
                         Citation.objects.get_or_create(citing_paper=citing_paper, cited_paper=paper)
                     except Paper.DoesNotExist:
+                        print("Paper not found:", citing_arxiv_id)
                         continue  # Citing paper not in our database yet
