@@ -1,0 +1,58 @@
+{% extends 'papers/base.html' %}
+
+{% block title %}Similar to: {{ original_paper.title|truncatechars:50 }} - arXiv{% endblock %}
+
+{% block content %}
+<a href="{% url 'papers:detail' original_paper.id %}" class="back-link">← Back to Paper</a>
+
+<div class="paper-card" style="background: #f0f8ff; border-left: 4px solid #3498db;">
+    <h2>Papers Similar to:</h2>
+    <div class="paper-title">{{ original_paper.title }}</div>
+    <div class="paper-id">arXiv:{{ original_paper.arxiv_id }}</div>
+</div>
+
+<h3 style="margin: 2rem 0 1rem;">Most Similar Papers (by Abstract Embedding)</h3>
+
+{% for item in similar_papers %}
+<div class="paper-card">
+    <div style="display: flex; align-items: start; justify-content: space-between;">
+        <div style="flex: 1;">
+            <div class="paper-title">
+                <a href="{% url 'papers:detail' item.paper.id %}">{{ item.paper.title }}</a>
+                <span class="similarity-score">
+                    {{ item.similarity|floatformat:3 }} similarity
+                </span>
+            </div>
+            
+            <div class="paper-authors">
+                {% with authors=item.paper.authors.all|slice:":5" %}
+                    {% for author in authors %}
+                        {{ author }}{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                    {% if item.paper.authors.count > 5 %}
+                        et al.
+                    {% endif %}
+                {% endwith %}
+            </div>
+            
+            <div class="paper-id">
+                arXiv:{{ item.paper.arxiv_id }} | 
+                Submitted: {{ item.paper.created|date:"M Y" }}
+            </div>
+            
+            {% if item.paper.categories %}
+            <div class="categories" style="margin-top: 0.5rem;">
+                {% for category in item.paper.categories|slice:":3" %}
+                    <span class="category-tag">{{ category }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<div style="margin-top: 2rem;">
+    <a href="{% url 'papers:search' %}" class="btn btn-secondary">New Search</a>
+</div>
+{% endblock %}

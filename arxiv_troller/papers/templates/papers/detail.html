@@ -1,0 +1,72 @@
+{% extends 'papers/base.html' %}
+
+{% block title %}{{ paper.title|truncatechars:50 }} - arXiv{% endblock %}
+
+{% block content %}
+<a href="{% url 'papers:search' %}" class="back-link">← Back to Search</a>
+
+<div class="paper-card">
+    <h1 class="paper-title">{{ paper.title }}</h1>
+    
+    <div class="paper-authors">
+        <strong>Authors:</strong>
+        {% for author_rel in authors %}
+            {{ author_rel.author }}{% if not forloop.last %}, {% endif %}
+        {% endfor %}
+    </div>
+    
+    <div class="metadata">
+        <div class="metadata-item">
+            <div class="metadata-label">arXiv ID</div>
+            <div>{{ paper.arxiv_id }}</div>
+        </div>
+        
+        <div class="metadata-item">
+            <div class="metadata-label">Submitted</div>
+            <div>{{ paper.created|date:"F j, Y" }}</div>
+        </div>
+        
+        {% if paper.updated %}
+        <div class="metadata-item">
+            <div class="metadata-label">Last Updated</div>
+            <div>{{ paper.updated|date:"F j, Y" }}</div>
+        </div>
+        {% endif %}
+        
+        {% if paper.categories %}
+        <div class="metadata-item">
+            <div class="metadata-label">Categories</div>
+            <div class="categories">
+                {% for category in paper.categories %}
+                    <span class="category-tag">{{ category }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+    <div class="abstract">
+        <h3 style="margin-bottom: 1rem;">Abstract</h3>
+        {{ paper.abstract }}
+    </div>
+    
+    <div style="margin-top: 2rem;">
+        <a href="https://arxiv.org/abs/{{ paper.arxiv_id }}" 
+           target="_blank" 
+           class="btn btn-secondary"
+           style="margin-right: 1rem;">
+            View on arXiv ↗
+        </a>
+        
+        {% if has_embedding %}
+        <a href="{% url 'papers:similar' paper.id %}" class="btn">
+            Find Similar Papers
+        </a>
+        {% else %}
+        <button class="btn" disabled style="opacity: 0.5; cursor: not-allowed;">
+            No Embedding Available
+        </button>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

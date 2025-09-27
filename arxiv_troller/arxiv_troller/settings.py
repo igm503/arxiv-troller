@@ -92,11 +92,6 @@ DATABASES = {
     }
 }
 
-if 'load_existing_records' in sys.argv:
-    MIGRATION_MODULES = {
-        'papers': None,
-    }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
