@@ -11,7 +11,49 @@
     <div class="paper-id">arXiv:{{ original_paper.arxiv_id }}</div>
 </div>
 
-<h3 style="margin: 2rem 0 1rem;">Most Similar Papers (by Abstract Embedding)</h3>
+<!-- Filter Controls -->
+<div class="paper-card" style="background: #fff;">
+    <h3 style="margin-bottom: 1rem;">Filter Results</h3>
+    <form method="get" style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: end;">
+        <div>
+            <label for="date_filter" style="display: block; margin-bottom: 0.25rem; font-size: 0.9rem; color: #666;">Date Range:</label>
+            <select name="date_filter" id="date_filter" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <option value="all" {% if date_filter == 'all' %}selected{% endif %}>All Time</option>
+                <option value="1month" {% if date_filter == '1month' %}selected{% endif %}>Last Month</option>
+                <option value="3months" {% if date_filter == '3months' %}selected{% endif %}>Last 3 Months</option>
+                <option value="6months" {% if date_filter == '6months' %}selected{% endif %}>Last 6 Months</option>
+                <option value="1year" {% if date_filter == '1year' %}selected{% endif %}>Last Year</option>
+                <option value="2years" {% if date_filter == '2years' %}selected{% endif %}>Last 2 Years</option>
+            </select>
+        </div>
+        
+        <div>
+            <label for="category" style="display: block; margin-bottom: 0.25rem; font-size: 0.9rem; color: #666;">Category:</label>
+            <select name="category" id="category" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <option value="">All Categories</option>
+                {% for cat in all_categories %}
+                    <option value="{{ cat }}" {% if category_filter == cat %}selected{% endif %}>{{ cat }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <button type="submit" class="btn" style="margin: 0;">Apply Filters</button>
+        
+        {% if date_filter != 'all' or category_filter %}
+            <a href="{% url 'papers:similar' original_paper.id %}" class="btn btn-secondary" style="text-decoration: none;">Clear Filters</a>
+        {% endif %}
+    </form>
+</div>
+
+<h3 style="margin: 2rem 0 1rem;">
+    Most Similar Papers (by Abstract Embedding)
+    {% if page_obj.paginator.count %}
+        <span style="font-weight: normal; color: #666; font-size: 0.9rem;">
+            - Showing top {{ page_obj.paginator.count }} results
+            {% if date_filter != 'all' or category_filter %}(filtered){% endif %}
+        </span>
+    {% endif %}
+</h3>
 
 {% for item in similar_papers %}
 <div class="paper-card">
@@ -19,8 +61,8 @@
         <div style="flex: 1;">
             <div class="paper-title">
                 <a href="{% url 'papers:detail' item.paper.id %}">{{ item.paper.title }}</a>
-                <span class="similarity-score">
-                    {{ item.similarity|floatformat:3 }} similarity
+                <span class="similarity-score" style="background: #e3f2fd; color: #1976d2;">
+                    L2: {{ item.distance|floatformat:3 }} | Score: {{ item.similarity_score|floatformat:3 }}
                 </span>
             </div>
             
@@ -42,15 +84,43 @@
             
             {% if item.paper.categories %}
             <div class="categories" style="margin-top: 0.5rem;">
-                {% for category in item.paper.categories|slice:":3" %}
+                {% for category in item.paper.categories|slice:":5" %}
                     <span class="category-tag">{{ category }}</span>
                 {% endfor %}
+                {% if item.paper.categories|length > 5 %}
+                    <span class="category-tag">+{{ item.paper.categories|length|add:"-5" }} more</span>
+                {% endif %}
             </div>
             {% endif %}
         </div>
     </div>
 </div>
+{% empty %}
+<div class="paper-card">
+    <p>No similar papers found with the current filters. Try adjusting your filter settings.</p>
+</div>
 {% endfor %}
+
+<!-- Pagination -->
+{% if page_obj.has_other_pages %}
+<div class="paper-card" style="display: flex; justify-content: center; align-items: center; gap: 1rem;">
+    <div style="display: flex; gap: 0.5rem; align-items: center;">
+        {% if page_obj.has_previous %}
+            <a href="?page=1&date_filter={{ date_filter }}&category={{ category_filter }}" class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.9rem;">First</a>
+            <a href="?page={{ page_obj.previous_page_number }}&date_filter={{ date_filter }}&category={{ category_filter }}" class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.9rem;">← Previous</a>
+        {% endif %}
+        
+        <span style="margin: 0 1rem; color: #666;">
+            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+        </span>
+        
+        {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}&date_filter={{ date_filter }}&category={{ category_filter }}" class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.9rem;">Next →</a>
+            <a href="?page={{ page_obj.paginator.num_pages }}&date_filter={{ date_filter }}&category={{ category_filter }}" class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.9rem;">Last</a>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 
 <div style="margin-top: 2rem;">
     <a href="{% url 'papers:search' %}" class="btn btn-secondary">New Search</a>
