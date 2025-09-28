@@ -3,6 +3,20 @@
 {% block title %}{{ paper.title|truncatechars:50 }} - arXiv{% endblock %}
 
 {% block content %}
+
+
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    },
+  };
+</script>
+
+<script type="text/javascript" id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js">
+</script>
 <a href="{% url 'papers:search' %}" class="back-link">← Back to Search</a>
 
 <div class="paper-card">
@@ -47,7 +61,7 @@
     
     <div class="abstract">
         <h3 style="margin-bottom: 1rem;">Abstract</h3>
-        {{ paper.abstract }}
+        {{ abstract|safe }}
     </div>
     
     <div style="margin-top: 2rem;">

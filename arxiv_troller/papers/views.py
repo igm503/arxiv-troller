@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta
 
 from django.shortcuts import render, get_object_or_404
@@ -31,6 +32,48 @@ def search_papers(request):
     )
 
 
+def process_latex_commands(text):
+    # Text formatting commands
+    text = re.sub(r"\\textbf\{([^}]+)\}", r"<strong>\1</strong>", text)
+    text = re.sub(r"\\textit\{([^}]+)\}", r"<em>\1</em>", text)
+    text = re.sub(r"\\emph\{([^}]+)\}", r"<em>\1</em>", text)
+    text = re.sub(r"\\texttt\{([^}]+)\}", r"<code>\1</code>", text)
+    text = re.sub(r"\\underline\{([^}]+)\}", r"<u>\1</u>", text)
+
+    # URLs and hrefs
+    text = re.sub(r'\\url\{([^}]+)\}', r'<a href="\1" target="_blank">\1</a>', text)
+    text = re.sub(r'\\href\{([^}]+)\}\{([^}]+)\}', r'<a href="\1" target="_blank">\2</a>', text)
+
+    # Special characters and escapes
+    text = re.sub(r"\\%", "%", text)
+    text = re.sub(r"\\&", "&", text)
+    text = re.sub(r"\\\$", "$", text)
+    text = re.sub(r"\\#", "#", text)
+    text = re.sub(r"\\_", "_", text)
+    text = re.sub(r"\\\{", "{", text)
+    text = re.sub(r"\\\}", "}", text)
+    text = re.sub(r"\\textbackslash(?:\{\})?", r"\\", text)  # Fixed: use raw string
+    text = re.sub(r"\\~", "~", text)
+    text = re.sub(r"\\\^", "^", text)
+
+    # LaTeX quotes
+    text = re.sub(r"``", '"', text)
+    text = re.sub(r"''", '"', text)
+    text = re.sub(
+        r"`",
+        """, text)
+    text = re.sub(r"'", """,
+        text,
+    )
+
+    # Common spacing commands
+    text = re.sub(r"\\,", " ", text)  # thin space
+    text = re.sub(r"~", "&nbsp;", text)  # non-breaking space
+    text = re.sub(r"\\\\", "<br>", text)  # line break
+
+    return text
+
+
 def paper_detail(request, paper_id):
     """Display paper details."""
     paper = get_object_or_404(Paper, id=paper_id)
@@ -45,6 +88,8 @@ def paper_detail(request, paper_id):
         paper=paper, model_name="gemini-embedding-001", embedding_type="abstract"
     ).exists()
 
+    abstract = process_latex_commands(paper.abstract)
+
     return render(
         request,
         "papers/detail.html",
@@ -52,6 +97,7 @@ def paper_detail(request, paper_id):
             "paper": paper,
             "authors": authors,
             "has_embedding": has_embedding,
+            "abstract": abstract,
         },
     )
 
@@ -115,11 +161,9 @@ def similar_papers(request, paper_id):
     # This is a limitation when using vector similarity - we can't efficiently paginate millions of results
     # So we limit to top 1000 most similar papers for filtering/pagination
     similar_embeddings = similar_embeddings[:1000]
-    print(len(similar_embeddings))
 
     # Convert to list to avoid re-evaluation
     similar_list = list(similar_embeddings)
-    print(len(similar_list))
 
     # Get all unique categories from these results for filter dropdown
     all_categories = set()
@@ -129,7 +173,6 @@ def similar_papers(request, paper_id):
     all_categories = sorted(list(all_categories))
 
     # Paginate the limited results
-    print(len(similar_list))
     paginator = Paginator(similar_list, 20)
     page_obj = paginator.get_page(page_number)
 
