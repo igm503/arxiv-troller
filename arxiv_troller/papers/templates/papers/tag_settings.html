@@ -1,0 +1,78 @@
+{% extends 'papers/base.html' %}
+{% block title %}Settings - {{ tag.name }}{% endblock %}
+{% block content %}
+
+<h2>Tag Settings: {{ tag.name }}</h2>
+
+<div class="paper-card">
+    <h3>Rename Tag</h3>
+    <form onsubmit="renameTag(event)">
+        <input type="text" id="new_name" value="{{ tag.name }}" style="padding: 8px; width: 300px;">
+        <button type="submit" class="btn">Rename</button>
+    </form>
+</div>
+
+<div class="paper-card">
+    <h3>Tagged Papers ({{ tagged_papers.count }})</h3>
+    {% for tagged in tagged_papers %}
+    <div style="padding: 10px; border-bottom: 1px solid #eee;">
+        {{ tagged.paper.title }}
+        <button onclick="removeFromTag({{ tagged.paper.id }})" class="action-btn remove-btn">
+            Remove from Tag
+        </button>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="paper-card">
+    <h3>Hidden Papers ({{ removed_papers.count }})</h3>
+    {% for removed in removed_papers %}
+    <div style="padding: 10px; border-bottom: 1px solid #eee;">
+        {{ removed.paper.title }}
+        <button onclick="unremovePaper({{ removed.paper.id }})" class="action-btn add-tag-btn">
+            Unhide
+        </button>
+    </div>
+    {% endfor %}
+</div>
+
+<a href="{% url 'papers:tag' tag.id %}" class="btn">← Back to Tag</a>
+
+<script>
+function renameTag(event) {
+    event.preventDefault();
+    const newName = document.getElementById('new_name').value;
+    fetch("{% url 'papers:rename_tag' %}", {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `tag_id={{ tag.id }}&new_name=${newName}`
+    }).then(() => location.reload());
+}
+
+function removeFromTag(paperId) {
+    fetch("{% url 'papers:remove_from_tag' %}", {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `paper_id=${paperId}&tag_id={{ tag.id }}`
+    }).then(() => location.reload());
+}
+
+function unremovePaper(paperId) {
+    fetch("{% url 'papers:unremove_from_search' %}", {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `tag_id={{ tag.id }}&paper_ids[]=${paperId}`
+    }).then(() => location.reload());
+}
+</script>
+
+{% endblock %}

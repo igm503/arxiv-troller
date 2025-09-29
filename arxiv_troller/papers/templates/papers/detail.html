@@ -63,6 +63,30 @@
         <h3 style="margin-bottom: 1rem;">Abstract</h3>
         {{ abstract|safe }}
     </div>
+
+    {% if user.is_authenticated %}
+    <div style="margin-top: 1rem;">
+        <button onclick="showAddTagDialog({{ paper.id }})" class="btn">
+            + Add to Tag
+        </button>
+    </div>
+
+    <script>
+    function showAddTagDialog(paperId) {
+        const tagName = prompt("Enter tag name:");
+        if (tagName) {
+            fetch("{% url 'papers:add_to_tag' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `paper_id=${paperId}&tag_name=${tagName}`
+            }).then(() => alert("Added to tag!"));
+        }
+    }
+    </script>
+    {% endif %}
     
     <div style="margin-top: 2rem;">
         <a href="https://arxiv.org/abs/{{ paper.arxiv_id }}" 

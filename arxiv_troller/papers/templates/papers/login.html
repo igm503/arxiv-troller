@@ -1,0 +1,16 @@
+{% extends 'papers/base.html' %}
+{% block title %}Login{% endblock %}
+{% block content %}
+<div class="paper-card" style="max-width: 400px; margin: 100px auto;">
+    <h2>Login</h2>
+    <form method="post">
+        {% csrf_token %}
+        <input type="email" name="email" placeholder="Enter your email" required 
+               style="width: 100%; padding: 10px; margin: 10px 0;">
+        <button type="submit" class="btn" style="width: 100%;">Login</button>
+    </form>
+    <p style="margin-top: 20px; color: #666;">
+        No password required. Just enter your email to access your tags.
+    </p>
+</div>
+{% endblock %}

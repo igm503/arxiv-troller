@@ -5,9 +5,9 @@ from django.shortcuts import render, get_object_or_404
 from django.core.paginator import Paginator
 from pgvector.django import L2Distance
 from django.db import connection
-from pgvector.django import L2Distance
+from django.db.models import Q
 
-from .models import Paper, Embedding
+from .models import Paper, Embedding, Tag, TaggedPaper, RemovedPaper
 
 
 def search_papers(request):
@@ -207,45 +207,150 @@ def similar_papers(request, paper_id):
         },
     )
 
-    # IMPORTANT: We need to limit the queryset BEFORE pagination to avoid counting all embeddings
-    # This is a limitation when using vector similarity - we can't efficiently paginate millions of results
-    # So we limit to top 1000 most similar papers for filtering/pagination
-    similar_embeddings = similar_embeddings[:1000]
 
-    # Convert to list to avoid re-evaluation
-    similar_list = list(similar_embeddings)
+def unified_search_view(request, tag_id=None):
+    """Unified view for search, similarity, and tag pages"""
+    with connection.cursor() as cursor:
+        cursor.execute("SET hnsw.ef_search = 1000")
 
-    # Get all unique categories from these results for filter dropdown
-    all_categories = set()
-    for emb in similar_list:
-        if emb.paper.categories:
-            all_categories.update(emb.paper.categories)
-    all_categories = sorted(list(all_categories))
+    context = {
+        "user_tags": [],
+        "current_tag": None,
+        "mode": "search",
+        "query": request.GET.get("q", ""),
+        "single_paper_id": request.GET.get("single_paper"),  # For single paper similarity
+    }
 
-    # Paginate the limited results
-    paginator = Paginator(similar_list, 20)
-    page_obj = paginator.get_page(page_number)
-
-    # Build results with paper info
-    similar_papers = []
-    for emb in page_obj:
-        similar_papers.append(
-            {
-                "paper": emb.paper,
-                "distance": emb.distance,
-                "similarity_score": 1 / (1 + emb.distance),  # Convert L2 distance to a score
-            }
+    # Get user tags if logged in
+    if request.user.is_authenticated:
+        context["user_tags"] = Tag.objects.filter(user=request.user).prefetch_related(
+            "tagged_papers"
         )
 
-    return render(
-        request,
-        "papers/similar.html",
-        {
-            "original_paper": paper,
-            "similar_papers": similar_papers,
-            "page_obj": page_obj,
-            "date_filter": date_filter,
-            "category_filter": category_filter,
-            "all_categories": all_categories,
-        },
-    )
+    # Handle tag-based similarity search
+    if tag_id and request.user.is_authenticated:
+        tag = get_object_or_404(Tag, id=tag_id, user=request.user)
+        context["current_tag"] = tag
+        context["mode"] = "tag"
+
+        # Get sorting preference
+        sort = request.GET.get("sort", "time")  # 'time' or 'alpha'
+
+        # Get tagged papers
+        tagged_papers = TaggedPaper.objects.filter(tag=tag).select_related("paper")
+        if sort == "alpha":
+            tagged_papers = tagged_papers.order_by("paper__title")
+        else:
+            tagged_papers = tagged_papers.order_by("-added_at")
+
+        context["tagged_papers"] = tagged_papers
+        context["sort"] = sort
+
+        # Get removed paper IDs for this tag
+        removed_paper_ids = set(
+            RemovedPaper.objects.filter(tag=tag).values_list("paper_id", flat=True)
+        )
+
+        # Get already tagged paper IDs
+        tagged_paper_ids = set(tagged_papers.values_list("paper_id", flat=True))
+
+        # Get date filter
+        date_filter = request.GET.get("date_filter", "1month")
+        context["date_filter"] = date_filter
+
+        # Check if searching for single paper similarity
+        single_paper_id = request.GET.get("single_paper")
+
+        if single_paper_id:
+            # Single paper similarity
+            source_papers = [get_object_or_404(TaggedPaper, tag=tag, paper_id=single_paper_id)]
+            papers_per_source = 40
+        else:
+            # All tagged papers similarity
+            source_papers = list(tagged_papers[:25])  # Limit to 25 papers
+            papers_per_source = max(1, min(40, 1000 // max(1, len(source_papers))))
+
+        # Collect similarity results with proper interleaving
+        interleaved_results = []
+
+        for round_idx in range(papers_per_source):
+            for source_idx, tagged in enumerate(source_papers):
+                embedding = Embedding.objects.filter(
+                    paper=tagged.paper,
+                    model_name="gemini-embedding-001",
+                    embedding_type="abstract",
+                ).first()
+
+                if not embedding:
+                    continue
+
+                # Build date-filtered query
+                paper_query = Paper.objects.exclude(
+                    Q(id__in=removed_paper_ids) | Q(id__in=tagged_paper_ids)
+                )
+
+                if date_filter != "all":
+                    today = datetime.now().date()
+                    date_cutoffs = {
+                        "1month": today - timedelta(days=30),
+                        "3months": today - timedelta(days=90),
+                        "6months": today - timedelta(days=180),
+                        "1year": today - timedelta(days=365),
+                        "2years": today - timedelta(days=730),
+                    }
+                    if date_filter in date_cutoffs:
+                        paper_query = paper_query.filter(created__gte=date_cutoffs[date_filter])
+
+                valid_paper_ids = paper_query.values_list("id", flat=True)
+
+                # Get the nth most similar paper for this source
+                similar = (
+                    Embedding.objects.filter(
+                        model_name="gemini-embedding-001",
+                        embedding_type="abstract",
+                        paper_id__in=valid_paper_ids,
+                    )
+                    .annotate(distance=L2Distance("vector", embedding.vector))
+                    .select_related("paper")
+                    .order_by("distance")[round_idx : round_idx + 1]  # Get just the nth result
+                ).first()
+
+                if similar:
+                    interleaved_results.append(
+                        {
+                            "paper": similar.paper,
+                            "distance": similar.distance,
+                            "source_paper": tagged.paper,
+                            "similarity_score": 1 / (1 + similar.distance),
+                        }
+                    )
+
+        # Remove duplicates while preserving order
+        seen_papers = set()
+        unique_results = []
+        for result in interleaved_results:
+            if result["paper"].id not in seen_papers:
+                seen_papers.add(result["paper"].id)
+                unique_results.append(result)
+
+        # Limit to 1000 results
+        unique_results = unique_results[:1000]
+
+        # Paginate
+        paginator = Paginator(unique_results, 20)
+        page_obj = paginator.get_page(request.GET.get("page", 1))
+        context["similar_papers"] = page_obj
+        context["page_obj"] = page_obj
+
+    # Handle regular search
+    elif context["query"]:
+        context["mode"] = "search"
+
+        papers = (
+            Paper.objects.filter(title__icontains=context["query"])
+            .prefetch_related("authors", "paperauthor_set__author")
+            .order_by("-created")[:100]
+        )
+        context["papers"] = papers
+
+    return render(request, "papers/unified.html", context)
