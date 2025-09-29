@@ -41,8 +41,8 @@ def process_latex_commands(text):
     text = re.sub(r"\\underline\{([^}]+)\}", r"<u>\1</u>", text)
 
     # URLs and hrefs
-    text = re.sub(r'\\url\{([^}]+)\}', r'<a href="\1" target="_blank">\1</a>', text)
-    text = re.sub(r'\\href\{([^}]+)\}\{([^}]+)\}', r'<a href="\1" target="_blank">\2</a>', text)
+    text = re.sub(r"\\url\{([^}]+)\}", r'<a href="\1" target="_blank">\1</a>', text)
+    text = re.sub(r"\\href\{([^}]+)\}\{([^}]+)\}", r'<a href="\1" target="_blank">\2</a>', text)
 
     # Special characters and escapes
     text = re.sub(r"\\%", "%", text)
@@ -122,12 +122,10 @@ def similar_papers(request, paper_id):
     category_filter = request.GET.get("category", "")
     page_number = request.GET.get("page", 1)
 
-    # Start with base query
-    query = Embedding.objects.filter(
-        model_name="gemini-embedding-001", embedding_type="abstract"
-    ).exclude(paper=paper)
+    # First, get the paper IDs that match our date filter
+    paper_query = Paper.objects.all()
 
-    # Apply date filter
+    # Apply date filter to papers first
     if date_filter != "all":
         today = datetime.now().date()
         if date_filter == "1month":
@@ -144,17 +142,69 @@ def similar_papers(request, paper_id):
             date_cutoff = None
 
         if date_cutoff:
-            query = query.filter(paper__created__gte=date_cutoff)
+            paper_query = paper_query.filter(created__gte=date_cutoff)
 
-    # Apply category filter
+    # Apply category filter to papers
     if category_filter:
-        query = query.filter(paper__categories__contains=[category_filter])
+        paper_query = paper_query.filter(categories__contains=[category_filter])
 
-    # Calculate L2 distance and get results
+    # Get valid paper IDs
+    valid_paper_ids = paper_query.values_list("id", flat=True)
+
+    # Now filter embeddings by these paper IDs
     similar_embeddings = (
-        query.annotate(distance=L2Distance("vector", embedding.vector))
+        Embedding.objects.filter(
+            model_name="gemini-embedding-001",
+            embedding_type="abstract",
+            paper_id__in=valid_paper_ids,  # Only search within filtered papers
+        )
+        .exclude(paper=paper)
+        .annotate(distance=L2Distance("vector", embedding.vector))
         .select_related("paper")
-        .order_by("distance")
+        .order_by("distance")[:1000]
+    )
+
+    # IMPORTANT: We need to limit the queryset BEFORE pagination to avoid counting all embeddings
+    # This is a limitation when using vector similarity - we can't efficiently paginate millions of results
+    # So we limit to top 1000 most similar papers for filtering/pagination
+    similar_embeddings = similar_embeddings[:1000]
+
+    # Convert to list to avoid re-evaluation
+    similar_list = list(similar_embeddings)
+
+    # Get all unique categories from these results for filter dropdown
+    all_categories = set()
+    for emb in similar_list:
+        if emb.paper.categories:
+            all_categories.update(emb.paper.categories)
+    all_categories = sorted(list(all_categories))
+
+    # Paginate the limited results
+    paginator = Paginator(similar_list, 20)
+    page_obj = paginator.get_page(page_number)
+
+    # Build results with paper info
+    similar_papers = []
+    for emb in page_obj:
+        similar_papers.append(
+            {
+                "paper": emb.paper,
+                "distance": emb.distance,
+                "similarity_score": 1 / (1 + emb.distance),  # Convert L2 distance to a score
+            }
+        )
+
+    return render(
+        request,
+        "papers/similar.html",
+        {
+            "original_paper": paper,
+            "similar_papers": similar_papers,
+            "page_obj": page_obj,
+            "date_filter": date_filter,
+            "category_filter": category_filter,
+            "all_categories": all_categories,
+        },
     )
 
     # IMPORTANT: We need to limit the queryset BEFORE pagination to avoid counting all embeddings
