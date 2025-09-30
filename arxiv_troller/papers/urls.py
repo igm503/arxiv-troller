@@ -1,13 +1,12 @@
 from django.urls import path
-
 from . import views, views_auth
 
 app_name = "papers"
+
 urlpatterns = [
     path("", views.unified_search_view, name="search"),
     path("login/", views_auth.login_view, name="login"),
     path("logout/", views_auth.logout_view, name="logout"),
-    path("tag/<int:tag_id>/", views.unified_search_view, name="tag"),
     path("tag/<int:tag_id>/settings/", views_auth.tag_settings, name="tag_settings"),
     path("ajax/add-to-tag/", views_auth.add_to_tag, name="add_to_tag"),
     path("ajax/remove-from-tag/", views_auth.remove_from_tag, name="remove_from_tag"),

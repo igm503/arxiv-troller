@@ -1,259 +1,778 @@
 {% extends 'papers/base.html' %}
+
+{% block body_class %}{% if current_tag %}class="has-drawer"{% endif %}{% endblock %}
+
+{% block header_tags %}
+{% if user.is_authenticated and user_tags %}
+<div class="header-tags">
+    <div class="tag-list">
+        <strong>Your Tags:</strong>
+        {% for tag in user_tags %}
+            <button class="tag-button {% if current_tag and current_tag.id == tag.id %}active{% endif %}"
+                    onclick="switchTag({{ tag.id }}, event)">
+                {{ tag.name }} ({{ tag.tagged_papers.count }})
+            </button>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block drawer %}
+{% if current_tag %}
+<div class="tag-drawer">
+    <div class="tag-drawer-header">
+        <h3>{{ current_tag.name }}</h3>
+        <button class="close-drawer" onclick="closeTagContext()">×</button>
+    </div>
+        
+        <div class="tag-drawer-actions">
+            {% if tagged_papers %}
+            <button class="btn" onclick="searchAllTagPapers()" style="width: 100%;">
+                🔍 Search All Papers
+            </button>
+            {% endif %}
+        </div>
+        
+        <div class="tag-drawer-papers">
+            {% for tagged in tagged_papers %}
+            <div class="tagged-paper-item">
+                <div class="tagged-paper-title">
+                    <a href="{% url 'papers:detail' tagged.paper.id %}?tag={{ current_tag.id }}" style="color: inherit; text-decoration: none;">
+                        {{ tagged.paper.title|truncatechars:60 }}
+                    </a>
+                </div>
+                <div class="tagged-paper-id">
+                    <a href="https://arxiv.org/abs/{{ tagged.paper.arxiv_id }}" target="_blank" style="color: inherit; text-decoration: none;">
+                        {{ tagged.paper.arxiv_id }}
+                    </a>
+                </div>
+                <div class="tagged-paper-actions">
+                    <button class="btn btn-small" onclick="searchSinglePaper({{ tagged.paper.id }})">
+                        🔍
+                    </button>
+                    <button class="remove-btn btn-small" onclick="removeFromTag({{ tagged.paper.id }})">
+                        Remove
+                    </button>
+                </div>
+            </div>
+            {% empty %}
+            <p style="padding: 15px; color: #999; text-align: center;">No papers tagged yet</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 
 <style>
-.two-column-layout {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-    margin-top: 20px;
+/* Layout for tag drawer and results */
+.page-layout {
+    position: relative;
 }
-.column {
+
+.tag-drawer {
+    position: fixed;
+    left: 0;
+    top: var(--header-height, 120px);
+    width: 300px;
     background: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    max-height: 80vh;
-    overflow-y: auto;
+    box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+    height: calc(100vh - var(--header-height, 120px));
+    display: flex;
+    flex-direction: column;
+    z-index: 50;
+    transition: top 0.1s;
 }
+
+body.scrolled .tag-drawer {
+    top: 0;
+    height: 100vh;
+}
+
+.tag-drawer-header {
+    padding: 15px;
+    border-bottom: 2px solid #eee;
+    background: #f8f9fa;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.tag-drawer-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: #2c3e50;
+}
+
+.close-drawer {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 1.2rem;
+    line-height: 1;
+}
+
+.close-drawer:hover {
+    background: #c0392b;
+}
+
+.tag-drawer-actions {
+    padding: 10px 15px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tag-drawer-papers {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+.tagged-paper-item {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+    font-size: 0.9rem;
+}
+
+.tagged-paper-item:hover {
+    background: #f9f9f9;
+}
+
+.tagged-paper-title {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 4px;
+    font-size: 0.95rem;
+}
+
+.tagged-paper-id {
+    color: #999;
+    font-size: 0.85rem;
+    font-family: monospace;
+    margin-bottom: 8px;
+}
+
+.tagged-paper-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.results-area {
+    /* Styling handled by .container */
+}
+
 .tag-list {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
     margin: 20px 0;
 }
-.tag-button {
-    padding: 8px 16px;
-    background: #ecf0f1;
-    border-radius: 4px;
-    text-decoration: none;
-    color: #333;
-    transition: background 0.3s;
+
+.search-context {
+    background: #f0f8ff;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    border-left: 4px solid #3498db;
 }
-.tag-button:hover, .tag-button.active {
+
+.search-context h3 {
+    margin: 0 0 10px 0;
+    font-size: 1.1rem;
+}
+
+.filter-controls {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.filter-controls form {
+    display: flex;
+    gap: 15px;
+    align-items: end;
+    flex-wrap: wrap;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.filter-group label {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 4px;
+}
+
+.filter-group select {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.95rem;
+}
+
+.add-tag-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.add-tag-main {
+    display: flex;
+    align-items: center;
+}
+
+.add-tag-main button {
     background: #3498db;
     color: white;
-}
-.action-btn {
-    cursor: pointer;
-    padding: 4px 8px;
-    margin-left: 10px;
     border: none;
-    border-radius: 4px;
+    padding: 6px 10px;
+    border-radius: 4px 0 0 4px;
+    cursor: pointer;
     font-size: 0.9rem;
 }
-.add-tag-btn {
-    background: #3498db;
-    color: white;
+
+.add-tag-main .dropdown-toggle {
+    background: #2980b9;
+    border-radius: 0 4px 4px 0;
+    border-left: 1px solid rgba(255,255,255,0.3);
+    padding: 6px 8px;
 }
+
+.add-tag-main button:hover {
+    background: #2980b9;
+}
+
+.add-tag-main .dropdown-toggle:hover {
+    background: #21618c;
+}
+
+.tag-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    min-width: 200px;
+    z-index: 1000;
+    margin-top: 4px;
+}
+
+.tag-dropdown-menu.show {
+    display: block;
+}
+
+.tag-dropdown-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #eee;
+}
+
+.tag-dropdown-item:hover {
+    background: #f0f8ff;
+}
+
+.tag-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.tag-dropdown-new {
+    padding: 8px 12px;
+    border-top: 2px solid #ddd;
+    background: #f9f9f9;
+    font-weight: 600;
+    color: #3498db;
+}
+
 .remove-btn {
     background: #e74c3c;
     color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
 }
-.paper-item {
-    padding: 15px;
-    border-bottom: 1px solid #eee;
-    transition: background 0.3s;
+
+.remove-btn:hover {
+    background: #c0392b;
 }
-.paper-item:hover {
-    background: #f9f9f9;
+
+.action-btn {
+    background: #3498db;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    margin-left: 8px;
 }
-.user-bar {
+
+.action-btn:hover {
+    background: #2980b9;
+}
+
+.pagination {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
-    background: white;
-    padding: 10px 20px;
-    margin-bottom: 20px;
-    border-radius: 8px;
+    gap: 10px;
+    margin: 30px 0;
 }
 </style>
 
-<!-- User bar -->
-<div class="user-bar">
-    {% if user.is_authenticated %}
-        <span>Logged in as: {{ user.username }}</span>
-        <a href="{% url 'papers:logout' %}" class="btn btn-secondary">Logout</a>
-    {% else %}
-        <span>Not logged in</span>
-        <a href="{% url 'papers:login' %}" class="btn">Login</a>
-    {% endif %}
-</div>
-
 <!-- Search bar always visible -->
 <div class="search-form">
-    <form method="get" action="{% url 'papers:search' %}">
+    <form method="get" action="{% url 'papers:search' %}" id="search-form">
         <input type="text" name="q" value="{{ query }}" 
                placeholder="Search papers by title..." autofocus>
         <button type="submit">Search</button>
+        {% if current_tag %}
+        <input type="hidden" name="tag" value="{{ current_tag.id }}">
+        {% endif %}
     </form>
 </div>
 
-<!-- User tags if logged in -->
-{% if user.is_authenticated and user_tags %}
-<div class="tag-list">
-    <strong>Your Tags:</strong>
-    {% for tag in user_tags %}
-        <a href="{% url 'papers:tag' tag.id %}" 
-           class="tag-button {% if current_tag and current_tag.id == tag.id %}active{% endif %}">
-            {{ tag.name }} ({{ tag.tagged_papers.count }})
-        </a>
-    {% endfor %}
-</div>
-{% endif %}
-
-<!-- Content based on mode -->
-{% if mode == 'tag' %}
-    <!-- Controls for tag view -->
-    <div style="margin: 10px 0; display: flex; gap: 10px; align-items: center;">
-        <a href="{% url 'papers:tag_settings' current_tag.id %}" class="btn btn-secondary">
-            ⚙️ Tag Settings
-        </a>
-        <form method="get" style="display: flex; gap: 10px; align-items: center;">
-            <label>Sort papers:</label>
-            <select name="sort" onchange="this.form.submit()">
-                <option value="time" {% if sort == 'time' %}selected{% endif %}>By Date Added</option>
-                <option value="alpha" {% if sort == 'alpha' %}selected{% endif %}>Alphabetical</option>
-            </select>
-            
-            <label>Date filter:</label>
-            <select name="date_filter" onchange="this.form.submit()">
-                <option value="1month" {% if date_filter == '1month' %}selected{% endif %}>Last Month</option>
-                <option value="3months" {% if date_filter == '3months' %}selected{% endif %}>Last 3 Months</option>
-                <option value="6months" {% if date_filter == '6months' %}selected{% endif %}>Last 6 Months</option>
-                <option value="1year" {% if date_filter == '1year' %}selected{% endif %}>Last Year</option>
-                <option value="all" {% if date_filter == 'all' %}selected{% endif %}>All Time</option>
-            </select>
-        </form>
-        {% if single_paper_id %}
-            <a href="{% url 'papers:tag' current_tag.id %}" class="btn btn-secondary">
-                ← Back to All Papers
-            </a>
+<!-- Results area -->
+<div class="results-area">
+        <!-- Search context indicator -->
+        {% if search_context %}
+        <div class="search-context">
+            {% if search_context.type == 'keyword' %}
+                <h3>Keyword Search Results</h3>
+                <p>Searching for: <strong>"{{ search_context.query }}"</strong></p>
+            {% elif search_context.type == 'tag_all' %}
+                <h3>Similar Papers - All Papers in {{ current_tag.name }}</h3>
+                <p>Finding papers similar to all papers in this tag</p>
+            {% elif search_context.type == 'single_paper' %}
+                <h3>Similar Papers</h3>
+                <div class="paper-title">{{ search_context.paper.title }}</div>
+                <div class="paper-id">arXiv: {{ search_context.paper.arxiv_id }}</div>
+            {% endif %}
+        </div>
         {% endif %}
-    </div>
-
-    <!-- Two column layout for tag view -->
-    <div class="two-column-layout">
-        <div class="column">
-            <h3>Tagged Papers - {{ current_tag.name }}</h3>
-            {% for tagged in tagged_papers %}
-            <div class="paper-item">
-                <div class="paper-title">
-                    <a href="{% url 'papers:detail' tagged.paper.id %}">{{ tagged.paper.title }}</a>
+        
+        <!-- Filter controls -->
+        <div class="filter-controls">
+            <form method="get" id="filter-form">
+                {% if query %}
+                <input type="hidden" name="q" value="{{ query }}">
+                {% endif %}
+                {% if current_tag %}
+                <input type="hidden" name="tag" value="{{ current_tag.id }}">
+                {% endif %}
+                {% if single_paper_id %}
+                <input type="hidden" name="single_paper" value="{{ single_paper_id }}">
+                {% endif %}
+                {% if search_all_tag %}
+                <input type="hidden" name="search_all" value="1">
+                {% endif %}
+                
+                <div class="filter-group">
+                    <label>Date Range:</label>
+                    <select name="date_filter" onchange="this.form.submit()">
+                        <option value="all" {% if date_filter == 'all' %}selected{% endif %}>All Time</option>
+                        <option value="1week" {% if date_filter == '1week' %}selected{% endif %}>Last Week</option>
+                        <option value="1month" {% if date_filter == '1month' %}selected{% endif %}>Last Month</option>
+                        <option value="3months" {% if date_filter == '3months' %}selected{% endif %}>Last 3 Months</option>
+                        <option value="6months" {% if date_filter == '6months' %}selected{% endif %}>Last 6 Months</option>
+                        <option value="1year" {% if date_filter == '1year' %}selected{% endif %}>Last Year</option>
+                    </select>
                 </div>
-                <div class="paper-id" style="color: #999; font-size: 0.9rem;">
-                    {{ tagged.paper.arxiv_id }}
+                
+                <div class="filter-group">
+                    <label>Category:</label>
+                    <select name="category" onchange="this.form.submit()">
+                        <option value="">All Categories</option>
+                        {% for cat in all_categories %}
+                        <option value="{{ cat }}" {% if category_filter == cat %}selected{% endif %}>{{ cat }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
-                <button onclick="searchSimilar({{ tagged.paper.id }})" class="action-btn add-tag-btn">
-                    🔍 Search Similar
-                </button>
-            </div>
-            {% empty %}
-            <p>No papers tagged yet.</p>
-            {% endfor %}
+            </form>
         </div>
         
-        <div class="column">
-            <h3>Similar Papers</h3>
-            {% for item in page_obj %}
-            <div class="paper-item" id="paper-{{ item.paper.id }}">
-                <div class="paper-title">{{ item.paper.title }}</div>
-                <div class="paper-id" style="color: #999; font-size: 0.9rem;">
-                    {{ item.paper.arxiv_id }} | Score: {{ item.similarity_score|floatformat:3 }}
+        <!-- Results -->
+        <div id="results-container">
+            {% if results %}
+                {% for item in results %}
+                <div class="paper-card" data-paper-id="{{ item.paper.id }}">
+                    <div class="paper-title">
+                        <a href="{% url 'papers:detail' item.paper.id %}{% if current_tag %}?tag={{ current_tag.id }}{% endif %}">{{ item.paper.title }}</a>
+                        {% if item.similarity_score %}
+                        <span class="similarity-score">
+                            Score: {{ item.similarity_score|floatformat:3 }}
+                        </span>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="paper-authors">
+                        {% with authors=item.paper.authors.all|slice:":3" %}
+                            {% for author in authors %}
+                                {{ author }}{% if not forloop.last %}, {% endif %}
+                            {% endfor %}
+                            {% if item.paper.authors.count > 3 %}
+                                et al.
+                            {% endif %}
+                        {% endwith %}
+                    </div>
+                    
+                    <div class="paper-id">
+                        <a href="https://arxiv.org/abs/{{ item.paper.arxiv_id }}" target="_blank">
+                            {{ item.paper.arxiv_id }}
+                        </a>
+                        {% if item.tags %}
+                        <span class="tags-container" style="margin-left: 15px;">
+                            {% for tag_name in item.tags %}
+                                <span style="display: inline-block; padding: 2px 8px; background: #e0e0e0; color: #666; border-radius: 3px; font-size: 0.85rem; margin-right: 4px;">
+                                    🏷️ {{ tag_name }}
+                                </span>
+                            {% endfor %}
+                        </span>
+                        {% endif %}
+                        {% if user.is_authenticated %}
+                        <span style="margin-left: 10px;">
+                            {% if current_tag %}
+                                <div class="add-tag-dropdown" style="display: inline-block;">
+                                    <div class="add-tag-main">
+                                        <button onclick="addToCurrentTag({{ item.paper.id }}, event)">+ Add to Tag</button>
+                                        <button class="dropdown-toggle" onclick="toggleTagDropdown(event, {{ item.paper.id }})">▼</button>
+                                    </div>
+                                    <div class="tag-dropdown-menu" id="dropdown-{{ item.paper.id }}">
+                                        {% for tag in user_tags %}
+                                        <div class="tag-dropdown-item" onclick="addToTag({{ item.paper.id }}, {{ tag.id }}, '{{ tag.name|escapejs }}')">
+                                            {{ tag.name }}
+                                        </div>
+                                        {% endfor %}
+                                        <div class="tag-dropdown-new" onclick="addToNewTag({{ item.paper.id }})">
+                                            + Create New Tag
+                                        </div>
+                                    </div>
+                                </div>
+                            {% else %}
+                                <div class="add-tag-dropdown" style="display: inline-block;">
+                                    <button class="action-btn" onclick="toggleTagDropdown(event, {{ item.paper.id }})">
+                                        + Add to Tag ▼
+                                    </button>
+                                    <div class="tag-dropdown-menu" id="dropdown-{{ item.paper.id }}">
+                                        {% for tag in user_tags %}
+                                        <div class="tag-dropdown-item" onclick="addToTag({{ item.paper.id }}, {{ tag.id }}, '{{ tag.name|escapejs }}')">
+                                            {{ tag.name }}
+                                        </div>
+                                        {% endfor %}
+                                        <div class="tag-dropdown-new" onclick="addToNewTag({{ item.paper.id }})">
+                                            + Create New Tag
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endif %}
+                        </span>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Abstract drawer -->
+                    <div class="abstract-drawer" id="abstract-{{ item.paper.id }}">
+                        <div class="paper-authors" style="margin-bottom: 10px;">
+                            <strong>Authors:</strong>
+                            {% for author in item.paper.authors.all %}
+                                {{ author }}{% if not forloop.last %}, {% endif %}
+                            {% endfor %}
+                        </div>
+                        <div style="margin-bottom: 8px; color: #666; font-size: 0.9rem;">
+                            <strong>Submitted:</strong> {{ item.paper.created|date:"M Y" }}
+                            {% if item.paper.updated %}
+                            | <strong>Updated:</strong> {{ item.paper.updated|date:"M Y" }}
+                            {% endif %}
+                        </div>
+                        <div style="line-height: 1.6;">
+                            {{ item.paper.abstract }}
+                        </div>
+                    </div>
                 </div>
-                <button onclick="addToCurrentTag({{ item.paper.id }})" class="action-btn add-tag-btn">
-                    + Add to Tag
-                </button>
-                <button onclick="removeFromSearch({{ item.paper.id }}, {{ current_tag.id }})" 
-                        class="action-btn remove-btn">
-                    × Hide
-                </button>
-            </div>
-            {% empty %}
-            <p>No similar papers found.</p>
-            {% endfor %}
-            
-            <!-- Pagination -->
-            {% if page_obj.has_other_pages %}
-            <div style="margin-top: 20px; text-align: center;">
-                {% if page_obj.has_previous %}
-                    <a href="?page={{ page_obj.previous_page_number }}&date_filter={{ date_filter }}&sort={{ sort }}{% if single_paper_id %}&single_paper={{ single_paper_id }}{% endif %}">← Previous</a>
+                {% endfor %}
+                
+                <!-- Pagination -->
+                {% if page_obj and page_obj.has_other_pages %}
+                    {% if page_obj.has_previous %}
+                        <a href="?page=1{% if query %}&q={{ query }}{% endif %}{% if current_tag %}&tag={{ current_tag.id }}{% endif %}{% if single_paper_id %}&single_paper={{ single_paper_id }}{% endif %}{% if search_all_tag %}&search_all=1{% endif %}&date_filter={{ date_filter }}&category={{ category_filter }}" class="btn btn-secondary btn-small">First</a>
+                        <a href="?page={{ page_obj.previous_page_number }}{% if query %}&q={{ query }}{% endif %}{% if current_tag %}&tag={{ current_tag.id }}{% endif %}{% if single_paper_id %}&single_paper={{ single_paper_id }}{% endif %}{% if search_all_tag %}&search_all=1{% endif %}&date_filter={{ date_filter }}&category={{ category_filter }}" class="btn btn-secondary btn-small">← Previous</a>
+                    {% endif %}
+                    
+                    <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+                    
+                    {% if page_obj.has_next %}
+                        <a href="?page={{ page_obj.next_page_number }}{% if query %}&q={{ query }}{% endif %}{% if current_tag %}&tag={{ current_tag.id }}{% endif %}{% if single_paper_id %}&single_paper={{ single_paper_id }}{% endif %}{% if search_all_tag %}&search_all=1{% endif %}&date_filter={{ date_filter }}&category={{ category_filter }}" class="btn btn-secondary btn-small">Next →</a>
+                        <a href="?page={{ page_obj.paginator.num_pages }}{% if query %}&q={{ query }}{% endif %}{% if current_tag %}&tag={{ current_tag.id }}{% endif %}{% if single_paper_id %}&single_paper={{ single_paper_id }}{% endif %}{% if search_all_tag %}&search_all=1{% endif %}&date_filter={{ date_filter }}&category={{ category_filter }}" class="btn btn-secondary btn-small">Last</a>
+                    {% endif %}
+                </div>
                 {% endif %}
-                Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
-                {% if page_obj.has_next %}
-                    <a href="?page={{ page_obj.next_page_number }}&date_filter={{ date_filter }}&sort={{ sort }}{% if single_paper_id %}&single_paper={{ single_paper_id }}{% endif %}">Next →</a>
-                {% endif %}
-            </div>
+            {% elif query or single_paper_id or search_all_tag %}
+                <div class="paper-card">
+                    <p>No results found. Try a different search or adjust your filters.</p>
+                </div>
             {% endif %}
         </div>
     </div>
-
-{% elif mode == 'search' and papers %}
-    <!-- Regular search results -->
-    <h2>Search Results</h2>
-    {% for paper in papers %}
-    <div class="paper-card">
-        <div class="paper-title">
-            <a href="{% url 'papers:detail' paper.id %}">{{ paper.title }}</a>
-        </div>
-        <div class="paper-id">{{ paper.arxiv_id }}</div>
-        {% if user.is_authenticated %}
-        <button onclick="showAddTagDialog({{ paper.id }})" class="action-btn add-tag-btn">
-            + Add to Tag
-        </button>
-        {% endif %}
-    </div>
-    {% endfor %}
-{% endif %}
+</div>
 
 <script>
-function searchSimilar(paperId) {
-    window.location.href = `?single_paper=${paperId}&date_filter={{ date_filter }}&sort={{ sort }}`;
+// Global state
+let currentTagId = {{ current_tag.id|default:"null" }};
+
+// Close tag drawer and exit tag context
+function closeTagContext() {
+    // Keep all current search params except tag
+    const params = new URLSearchParams(window.location.search);
+    params.delete('tag');
+    
+    const newUrl = params.toString() ? `{% url 'papers:search' %}?${params.toString()}` : '{% url 'papers:search' %}';
+    window.location.href = newUrl;
 }
 
-function addToCurrentTag(paperId) {
+// Switch to a different tag
+function switchTag(tagId, event) {
+    // Always do a full reload with the new tag parameter
+    // This ensures the drawer appears if it wasn't visible
+    const params = new URLSearchParams(window.location.search);
+    params.set('tag', tagId);
+    
+    window.location.href = `{% url 'papers:search' %}?${params.toString()}`;
+}
+
+// Search all papers in current tag
+function searchAllTagPapers() {
+    const params = new URLSearchParams(window.location.search);
+    params.set('search_all', '1');
+    params.delete('single_paper');
+    params.delete('q');
+    if (!params.has('date_filter')) {
+        params.set('date_filter', '1week');
+    }
+    window.location.href = `{% url 'papers:search' %}?${params.toString()}`;
+}
+
+// Search by single paper in tag
+function searchSinglePaper(paperId) {
+    const params = new URLSearchParams(window.location.search);
+    params.set('single_paper', paperId);
+    params.delete('search_all');
+    params.delete('q');
+    if (!params.has('date_filter')) {
+        params.set('date_filter', '1week');
+    }
+    window.location.href = `{% url 'papers:search' %}?${params.toString()}`;
+}
+
+// Remove paper from tag
+function removeFromTag(paperId) {
+    if (!confirm('Remove this paper from the tag?')) return;
+    
+    fetch("{% url 'papers:remove_from_tag' %}", {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `paper_id=${paperId}&tag_id=${currentTagId}`
+    }).then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        }
+    });
+}
+
+// Add to current tag (quick add)
+function addToCurrentTag(paperId, event) {
+    event.stopPropagation(); // Prevent abstract drawer toggle
+    
     fetch("{% url 'papers:add_to_tag' %}", {
         method: 'POST',
         headers: {
             'X-CSRFToken': '{{ csrf_token }}',
             'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: `paper_id=${paperId}&tag_id={{ current_tag.id }}`
+        body: `paper_id=${paperId}&tag_id=${currentTagId}`
     }).then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Move to left column
-            location.reload();
+            // Close dropdown if open
+            const dropdown = document.getElementById(`dropdown-${paperId}`);
+            if (dropdown) dropdown.classList.remove('show');
+            
+            // Refresh the drawer to show the new paper
+            if (currentTagId) {
+                fetch(`/papers/ajax/get-tag-drawer/?tag_id=${currentTagId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            const papersList = document.querySelector('.tag-drawer-papers');
+                            if (papersList) {
+                                papersList.innerHTML = data.papers_html;
+                            }
+                        }
+                    });
+            }
+            
+            // Add tag badge to the paper in results
+            addTagBadgeToPaper(paperId, data.tag_name);
         }
     });
 }
 
-function removeFromSearch(paperId, tagId) {
-    fetch("{% url 'papers:remove_from_search' %}", {
+// Add tag badge to paper in results
+function addTagBadgeToPaper(paperId, tagName) {
+    const paperCard = document.querySelector(`[data-paper-id="${paperId}"]`);
+    if (!paperCard) return;
+    
+    const paperIdDiv = paperCard.querySelector('.paper-id');
+    if (!paperIdDiv) return;
+    
+    // Check if tags container exists
+    let tagsContainer = paperIdDiv.querySelector('.tags-container');
+    if (!tagsContainer) {
+        // Create tags container after arxiv link
+        const arxivLink = paperIdDiv.querySelector('a');
+        tagsContainer = document.createElement('span');
+        tagsContainer.className = 'tags-container';
+        tagsContainer.style.marginLeft = '15px';
+        arxivLink.parentNode.insertBefore(tagsContainer, arxivLink.nextSibling);
+    }
+    
+    // Add new tag badge
+    const tagBadge = document.createElement('span');
+    tagBadge.style.cssText = 'display: inline-block; padding: 2px 8px; background: #e0e0e0; color: #666; border-radius: 3px; font-size: 0.85rem; margin-right: 4px;';
+    tagBadge.textContent = `🏷️ ${tagName}`;
+    tagsContainer.appendChild(tagBadge);
+}
+
+// Add to specific tag
+function addToTag(paperId, tagId, tagName) {
+    fetch("{% url 'papers:add_to_tag' %}", {
         method: 'POST',
         headers: {
             'X-CSRFToken': '{{ csrf_token }}',
             'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: `paper_id=${paperId}&tag_id=${tagId}`
-    }).then(() => {
-        document.getElementById(`paper-${paperId}`).style.display = 'none';
+    }).then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Close dropdown
+            const dropdown = document.getElementById(`dropdown-${paperId}`);
+            if (dropdown) dropdown.classList.remove('show');
+            
+            // If adding to current tag, refresh drawer
+            if (tagId == currentTagId) {
+                fetch(`/papers/ajax/get-tag-drawer/?tag_id=${currentTagId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            const papersList = document.querySelector('.tag-drawer-papers');
+                            if (papersList) {
+                                papersList.innerHTML = data.papers_html;
+                            }
+                        }
+                    });
+            }
+            
+            // Add tag badge
+            addTagBadgeToPaper(paperId, tagName);
+        }
     });
 }
 
-function showAddTagDialog(paperId) {
-    const tagName = prompt("Enter tag name (or choose from existing tags):");
-    if (tagName) {
-        fetch("{% url 'papers:add_to_tag' %}", {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': '{{ csrf_token }}',
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `paper_id=${paperId}&tag_name=${tagName}`
-        }).then(() => alert("Added to tag!"));
-    }
+// Add to new tag
+function addToNewTag(paperId) {
+    const tagName = prompt("Enter new tag name:");
+    if (!tagName || !tagName.trim()) return;
+    
+    fetch("{% url 'papers:add_to_tag' %}", {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `paper_id=${paperId}&tag_name=${encodeURIComponent(tagName)}`
+    }).then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`Created tag "${data.tag_name}" and added paper!`);
+            location.reload(); // Reload to show new tag in list
+        }
+    });
 }
+
+// Toggle tag dropdown
+function toggleTagDropdown(event, paperId) {
+    event.stopPropagation();
+    const dropdown = document.getElementById(`dropdown-${paperId}`);
+    
+    // Close all other dropdowns
+    document.querySelectorAll('.tag-dropdown-menu').forEach(d => {
+        if (d.id !== `dropdown-${paperId}`) {
+            d.classList.remove('show');
+        }
+    });
+    
+    dropdown.classList.toggle('show');
+}
+
+// Close dropdowns when clicking outside
+document.addEventListener('click', function(event) {
+    if (!event.target.closest('.add-tag-dropdown')) {
+        document.querySelectorAll('.tag-dropdown-menu').forEach(d => {
+            d.classList.remove('show');
+        });
+    }
+});
+
+// Toggle abstract drawer
+document.querySelectorAll('.paper-card').forEach(card => {
+    const paperId = card.dataset.paperId;
+    const drawer = document.getElementById(`abstract-${paperId}`);
+    
+    if (drawer) {
+        // Click anywhere except on links and buttons to toggle abstract
+        card.addEventListener('click', function(e) {
+            // Don't toggle if clicking on links, buttons, or the drawer itself
+            if (e.target.closest('a') || e.target.closest('button') || 
+                e.target.closest('.abstract-drawer') || e.target.closest('.add-tag-dropdown')) {
+                return;
+            }
+            
+            drawer.classList.toggle('open');
+        });
+    }
+});
+
+// Handle scroll to adjust drawer position
+let lastScrollTop = 0;
+const headerHeight = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--header-height') || '120');
+
+window.addEventListener('scroll', function() {
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    
+    if (scrollTop > headerHeight) {
+        document.body.classList.add('scrolled');
+    } else {
+        document.body.classList.remove('scrolled');
+    }
+}, false);
 </script>
 
 {% endblock %}

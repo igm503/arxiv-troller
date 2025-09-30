@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}arXiv Paper Search{% endblock %}</title>
     <style>
+        :root {
+            --header-height: 120px;
+        }
+        
         * {
             margin: 0;
             padding: 0;
@@ -24,12 +28,28 @@
             padding: 20px;
         }
         
+        body.has-drawer > .container {
+            margin-left: 0;
+            margin-right: 20px;
+            max-width: none;
+            padding-left: 320px;
+        }
+        
         header {
             background: #2c3e50;
             color: white;
-            padding: 1rem 0;
+            padding: 1rem 0 0 0;
             margin-bottom: 2rem;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: relative;
+            z-index: 100;
+        }
+        
+        header .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px 1rem 20px;
         }
         
         header h1 {
@@ -40,6 +60,78 @@
         header a {
             color: white;
             text-decoration: none;
+        }
+        
+        .user-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .user-controls input[type="email"] {
+            padding: 8px 12px;
+            border: 1px solid #fff;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .user-controls button,
+        .user-controls .btn-logout {
+            padding: 8px 16px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .user-controls button:hover,
+        .user-controls .btn-logout:hover {
+            background: #2980b9;
+        }
+        
+        .user-email {
+            color: white;
+            font-size: 14px;
+        }
+        
+        .header-tags {
+            background: #34495e;
+            padding: 0.75rem 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .tag-list {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin: 0;
+        }
+        
+        .tag-list strong {
+            color: white;
+            margin-right: 5px;
+        }
+        
+        .tag-button {
+            padding: 6px 12px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            text-decoration: none;
+            color: white;
+            transition: background 0.3s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        
+        .tag-button:hover, .tag-button.active {
+            background: #3498db;
+            color: white;
         }
         
         .search-form {
@@ -93,6 +185,7 @@
             font-weight: 600;
             margin-bottom: 0.5rem;
             color: #2c3e50;
+            cursor: pointer;
         }
         
         .paper-title a {
@@ -116,6 +209,16 @@
             font-family: monospace;
         }
         
+        .paper-id a {
+            color: inherit;
+            text-decoration: none;
+        }
+        
+        .paper-id a:hover {
+            color: #3498db;
+            text-decoration: underline;
+        }
+        
         .abstract {
             margin: 1.5rem 0;
             line-height: 1.8;
@@ -123,6 +226,22 @@
             background: #f9f9f9;
             padding: 1.5rem;
             border-radius: 8px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .abstract-drawer {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            background: #f9f9f9;
+            border-radius: 4px;
+            margin-top: 0.5rem;
+        }
+        
+        .abstract-drawer.open {
+            max-height: 500px;
+            overflow-y: auto;
+            padding: 1rem;
             border-left: 4px solid #3498db;
         }
         
@@ -172,6 +291,11 @@
             background: #7f8c8d;
         }
         
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 0.9rem;
+        }
+        
         .similarity-score {
             display: inline-block;
             padding: 4px 8px;
@@ -212,12 +336,32 @@
         }
     </style>
 </head>
-<body>
+<body {% block body_class %}{% endblock %}>
     <header>
-        <div class="container">
+        <div class="header-top">
             <h1><a href="{% url 'papers:search' %}">arXiv Paper Search</a></h1>
+            
+            <div class="user-controls">
+                {% if user.is_authenticated %}
+                    <span class="user-email">{{ user.email }}</span>
+                    <form method="post" action="{% url 'papers:logout' %}" style="display: inline;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-logout">Logout</button>
+                    </form>
+                {% else %}
+                    <form method="post" action="{% url 'papers:login' %}" style="display: flex; gap: 8px;">
+                        {% csrf_token %}
+                        <input type="email" name="email" placeholder="Enter email to login" required>
+                        <button type="submit">Login</button>
+                    </form>
+                {% endif %}
+            </div>
         </div>
+        
+        {% block header_tags %}{% endblock %}
     </header>
+    
+    {% block drawer %}{% endblock %}
     
     <div class="container">
         {% block content %}{% endblock %}
