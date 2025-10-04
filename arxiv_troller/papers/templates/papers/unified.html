@@ -180,11 +180,10 @@
                     <a href="?page={{ page_obj.previous_page_number }}{% if query %}&q={{ query }}{% endif %}{% if current_tag %}&tag={{ current_tag.id }}{% endif %}{% if single_paper_id %}&single_paper={{ single_paper_id }}{% endif %}{% if search_all_tag %}&search_all=1{% endif %}&date_filter={{ date_filter }}&category={{ category_filter }}" class="btn btn-secondary btn-small">← Previous</a>
                 {% endif %}
                 
-                <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+                <span>Page {{ page_obj.number }} </span>
                 
                 {% if page_obj.has_next %}
                     <a href="?page={{ page_obj.next_page_number }}{% if query %}&q={{ query }}{% endif %}{% if current_tag %}&tag={{ current_tag.id }}{% endif %}{% if single_paper_id %}&single_paper={{ single_paper_id }}{% endif %}{% if search_all_tag %}&search_all=1{% endif %}&date_filter={{ date_filter }}&category={{ category_filter }}" class="btn btn-secondary btn-small">Next →</a>
-                    <a href="?page={{ page_obj.paginator.num_pages }}{% if query %}&q={{ query }}{% endif %}{% if current_tag %}&tag={{ current_tag.id }}{% endif %}{% if single_paper_id %}&single_paper={{ single_paper_id }}{% endif %}{% if search_all_tag %}&search_all=1{% endif %}&date_filter={{ date_filter }}&category={{ category_filter }}" class="btn btn-secondary btn-small">Last</a>
                 {% endif %}
             </div>
             {% endif %}

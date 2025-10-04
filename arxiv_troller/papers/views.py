@@ -1,16 +1,15 @@
 import re
 from datetime import datetime, timedelta
 
-from django.shortcuts import render, get_object_or_404, redirect
+from django.shortcuts import render, get_object_or_404
 from django.core.paginator import Paginator
 from pgvector.django import L2Distance
 from django.db import connection
-from django.db.models import Q
 
 from .models import Paper, Embedding, Tag, TaggedPaper, RemovedPaper
 
-NUM_RESULTS = 100
 RESULTS_PER_PAGE = 40
+MAX_RESULTS = 400
 
 
 def process_latex_commands(text):
@@ -89,6 +88,7 @@ def unified_search_view(request):
         "search_all_tag": request.GET.get("search_all"),
         "results": [],
         "page_obj": None,
+        "num_results": min(MAX_RESULTS, int(request.GET.get("page", 1)) * RESULTS_PER_PAGE + 1),
         "search_context": None,
         "show_filters": False,
         "tagged_papers": [],
@@ -155,7 +155,7 @@ def _execute_keyword_search(request, context):
     if context["category_filter"]:
         papers = papers.filter(categories__contains=[context["category_filter"]])
 
-    papers = papers.prefetch_related("authors").order_by("-created")[:100]
+    papers = papers.prefetch_related("authors").order_by("-created")[: context["num_results"]]
 
     # Get all categories for filter
     all_categories = set()
@@ -249,8 +249,8 @@ def _execute_single_paper_search(request, context):
         .annotate(distance=L2Distance("vector", embedding.vector))
         .select_related("paper")
         .prefetch_related("paper__authors")
-        .order_by("distance")[:100]
-    )
+        .order_by("distance")
+    )[: context["num_results"]]
 
     # Get all categories
     all_categories = set()
@@ -326,10 +326,8 @@ def _execute_tag_similarity_search(request, context):
     if context["category_filter"]:
         paper_query = paper_query.filter(categories__contains=[context["category_filter"]])
 
-    valid_paper_ids = paper_query.values_list("id", flat=True)
-
     # Calculate papers per source for interleaving
-    papers_per_source = max(1, NUM_RESULTS // max(1, len(source_papers)))
+    papers_per_source = max(1, context["num_results"] // max(1, len(source_papers))) + 1
 
     results = []
 
@@ -343,7 +341,8 @@ def _execute_tag_similarity_search(request, context):
         if not embedding:
             continue
 
-        # Get the nth most similar paper for this source
+        valid_paper_ids = paper_query.values_list("id", flat=True)
+
         similars = (
             Embedding.objects.filter(
                 model_name="gemini-embedding-001",
@@ -367,6 +366,7 @@ def _execute_tag_similarity_search(request, context):
                     for similar in similars
                 ]
             )
+            paper_query = paper_query.exclude(id__in=similars.values_list("paper_id", flat=True))
     interleaved_results = []
 
     for i in range(papers_per_source):
@@ -381,8 +381,6 @@ def _execute_tag_similarity_search(request, context):
         if result["paper"].id not in seen_papers:
             seen_papers.add(result["paper"].id)
             unique_results.append(result)
-
-    unique_results = unique_results[:NUM_RESULTS]
 
     # Get all categories
     all_categories = set()
@@ -407,6 +405,8 @@ def _execute_tag_similarity_search(request, context):
     # Add tags to results
     for result in unique_results:
         result["tags"] = paper_tags.get(result["paper"].id, [])
+
+    unique_results = unique_results[: context["num_results"]]
 
     # Paginate
     paginator = Paginator(unique_results, RESULTS_PER_PAGE)
