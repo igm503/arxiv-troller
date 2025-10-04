@@ -1,0 +1,89 @@
+{% for item in results %}
+<div class="paper-card" data-paper-id="{{ item.paper.id }}">
+    <div class="paper-title">
+        <a href="{% url 'papers:detail' item.paper.id %}{% if current_tag %}?tag={{ current_tag.id }}{% endif %}">{{ item.paper.title }}</a>
+    </div>
+    
+    <div class="paper-authors">
+        {% with authors=item.paper.authors.all|slice:":3" %}
+            {% for author in authors %}
+                {{ author }}{% if not forloop.last %}, {% endif %}
+            {% endfor %}
+            {% if item.paper.authors.count > 3 %}
+                et al.
+            {% endif %}
+        {% endwith %}
+    </div>
+    
+    <div class="paper-id">
+        <a href="https://arxiv.org/abs/{{ item.paper.arxiv_id }}" target="_blank">
+            {{ item.paper.arxiv_id }}
+        </a>
+        {% if item.tags %}
+        <span class="tags-container" style="margin-left: 15px;">
+            {% for tag_name in item.tags %}
+                <span style="display: inline-block; padding: 2px 8px; background: #e0e0e0; color: #666; border-radius: 3px; font-size: 0.85rem; margin-right: 4px;" data-tag-name="{{ tag_name }}">
+                    🏷️ {{ tag_name }}
+                </span>
+            {% endfor %}
+        </span>
+        {% endif %}
+        {% if user.is_authenticated %}
+        <span style="margin-left: 10px;">
+            {% if current_tag %}
+                <div class="add-tag-dropdown" style="display: inline-block;">
+                    <div class="add-tag-main">
+                        <button onclick="addToCurrentTag({{ item.paper.id }}, event)">+ Add Tag</button>
+                        <button class="dropdown-toggle" onclick="toggleTagDropdown(event, {{ item.paper.id }})">▼</button>
+                    </div>
+                    <div class="tag-dropdown-menu" id="dropdown-{{ item.paper.id }}">
+                        {% for tag in user_tags %}
+                        <div class="tag-dropdown-item" onclick="addToTag({{ item.paper.id }}, {{ tag.id }}, '{{ tag.name|escapejs }}')">
+                            {{ tag.name }}
+                        </div>
+                        {% endfor %}
+                        <div class="tag-dropdown-new" onclick="addToNewTag({{ item.paper.id }})">
+                            + Create New Tag
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="add-tag-dropdown" style="display: inline-block;">
+                    <button class="action-btn" onclick="toggleTagDropdown(event, {{ item.paper.id }})">
+                        + Add Tag ▼
+                    </button>
+                    <div class="tag-dropdown-menu" id="dropdown-{{ item.paper.id }}">
+                        {% for tag in user_tags %}
+                        <div class="tag-dropdown-item" onclick="addToTag({{ item.paper.id }}, {{ tag.id }}, '{{ tag.name|escapejs }}')">
+                            {{ tag.name }}
+                        </div>
+                        {% endfor %}
+                        <div class="tag-dropdown-new" onclick="addToNewTag({{ item.paper.id }})">
+                            + Create New Tag
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </span>
+        {% endif %}
+    </div>
+    
+    <div class="abstract-drawer" id="abstract-{{ item.paper.id }}">
+        <div class="paper-authors" style="margin-bottom: 10px;">
+            <strong>Authors:</strong>
+            {% for author in item.paper.authors.all %}
+                {{ author }}{% if not forloop.last %}, {% endif %}
+            {% endfor %}
+        </div>
+        <div style="margin-bottom: 8px; color: #666; font-size: 0.9rem;">
+            <strong>Submitted:</strong> {{ item.paper.created|date:"M Y" }}
+            {% if item.paper.updated %}
+            | <strong>Updated:</strong> {{ item.paper.updated|date:"M Y" }}
+            {% endif %}
+        </div>
+        <div style="line-height: 1.6;">
+            {{ item.paper.abstract }}
+        </div>
+    </div>
+</div>
+{% endfor %}
