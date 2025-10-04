@@ -1,0 +1,43 @@
+{% if current_tag %}
+<div class="tag-drawer-wrapper">
+    <div style="padding: 15px; border-bottom: 2px solid #eee; background: #f8f9fa; display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0; font-size: 1.1rem; color: #2c3e50;">{{ current_tag.name }}</h3>
+        <button onclick="closeTagContext()" style="background: #e74c3c; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 1.2rem; line-height: 1;">×</button>
+    </div>
+    
+    <div style="padding: 10px 15px; border-bottom: 1px solid #eee;">
+        {% if tagged_papers %}
+        <button class="btn" onclick="searchAllTagPapers()" style="width: 100%;">
+            🔍 Search All Papers
+        </button>
+        {% endif %}
+    </div>
+    
+    <div style="padding: 10px;" id="drawer-papers-list">
+        {% for tagged in tagged_papers %}
+        <div style="padding: 10px; border-bottom: 1px solid #eee; font-size: 0.9rem;">
+            <div style="font-weight: 600; color: #2c3e50; margin-bottom: 4px; font-size: 0.95rem;">
+                <a href="{% url 'papers:detail' tagged.paper.id %}?tag={{ current_tag.id }}" style="color: inherit; text-decoration: none;">
+                    {{ tagged.paper.title|truncatechars:60 }}
+                </a>
+            </div>
+            <div style="color: #999; font-size: 0.85rem; font-family: monospace; margin-bottom: 8px;">
+                <a href="https://arxiv.org/abs/{{ tagged.paper.arxiv_id }}" target="_blank" style="color: inherit; text-decoration: none;">
+                    {{ tagged.paper.arxiv_id }}
+                </a>
+            </div>
+            <div style="display: flex; gap: 5px;">
+                <button class="btn btn-small" onclick="searchSinglePaper({{ tagged.paper.id }})">
+                    🔍
+                </button>
+                <button class="remove-btn btn-small" onclick="removeFromTag({{ tagged.paper.id }})">
+                    Remove
+                </button>
+            </div>
+        </div>
+        {% empty %}
+        <p style="padding: 15px; color: #999; text-align: center;">No papers tagged yet</p>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

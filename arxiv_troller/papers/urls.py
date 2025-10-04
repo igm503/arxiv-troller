@@ -21,6 +21,7 @@ urlpatterns = [
         name="unremove_from_search",
     ),
     path("ajax/rename-tag/", views_auth.rename_tag, name="rename_tag"),
+    path("ajax/get-tag-drawer/", views_auth.get_tag_drawer, name="get_tag_drawer"),
     path("paper/<int:paper_id>/", views.paper_detail, name="detail"),
     path("paper/<int:paper_id>/similar/", views.similar_papers, name="similar"),
 ]

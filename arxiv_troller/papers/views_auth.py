@@ -118,3 +118,66 @@ def tag_settings(request, tag_id):
         "papers/tag_settings.html",
         {"tag": tag, "tagged_papers": tagged_papers, "removed_papers": removed_papers},
     )
+
+
+@login_required
+def get_tag_drawer(request):
+    """AJAX endpoint to get tag drawer HTML for switching tags"""
+    tag_id = request.GET.get("tag_id")
+
+    if not tag_id:
+        return JsonResponse({"error": "Missing tag_id"}, status=400)
+
+    tag = get_object_or_404(Tag, id=tag_id, user=request.user)
+
+    # Get tagged papers
+    sort = request.GET.get("sort", "time")
+    tagged_papers = TaggedPaper.objects.filter(tag=tag).select_related("paper")
+    if sort == "alpha":
+        tagged_papers = tagged_papers.order_by("paper__title")
+    else:
+        tagged_papers = tagged_papers.order_by("-added_at")
+
+    # Build HTML for papers list
+    papers_html = ""
+    if tagged_papers.exists():
+        for tagged in tagged_papers:
+            title_truncated = tagged.paper.title[:60]
+            if len(tagged.paper.title) > 60:
+                title_truncated += "..."
+
+            papers_html += f"""
+            <div style="padding: 10px; border-bottom: 1px solid #eee; font-size: 0.9rem;">
+                <div style="font-weight: 600; color: #2c3e50; margin-bottom: 4px; font-size: 0.95rem;">
+                    <a href="/papers/paper/{tagged.paper.id}/?tag={tag.id}" style="color: inherit; text-decoration: none;">
+                        {title_truncated}
+                    </a>
+                </div>
+                <div style="color: #999; font-size: 0.85rem; font-family: monospace; margin-bottom: 8px;">
+                    <a href="https://arxiv.org/abs/{tagged.paper.arxiv_id}" target="_blank" style="color: inherit; text-decoration: none;">
+                        {tagged.paper.arxiv_id}
+                    </a>
+                </div>
+                <div style="display: flex; gap: 5px;">
+                    <button class="btn btn-small" onclick="searchSinglePaper({tagged.paper.id})">
+                        🔍
+                    </button>
+                    <button class="remove-btn btn-small" onclick="removeFromTag({tagged.paper.id})">
+                        Remove
+                    </button>
+                </div>
+            </div>
+            """
+    else:
+        papers_html = (
+            '<p style="padding: 15px; color: #999; text-align: center;">No papers tagged yet</p>'
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "tag_name": tag.name,
+            "tag_id": tag.id,
+            "papers_html": papers_html,
+        }
+    )

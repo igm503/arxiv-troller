@@ -36,34 +36,6 @@
             z-index: 100;
         }
         
-        .main-layout {
-            display: flex;
-            flex: 1;
-            overflow: hidden;
-            position: relative;
-        }
-        
-        .tag-drawer-wrapper {
-            width: 300px;
-            flex-shrink: 0;
-            overflow-y: auto;
-            background: white;
-            border-right: 1px solid #ddd;
-        }
-        
-        .container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-            width: 100%;
-        }
-        
-        .container > * {
-            max-width: 1200px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        
         header .header-top {
             display: flex;
             justify-content: space-between;
@@ -119,17 +91,17 @@
         
         .header-tags {
             background: #34495e;
-            padding: 0rem 20px;
+            padding: 0.4rem 20px;
             border-top: 1px solid rgba(255,255,255,0.1);
         }
         
         .tag-list {
             display: flex;
-            flex-wrap: wrap;
-            align-items: center;
             gap: 10px;
             flex-wrap: wrap;
-            margin: 10px 0;
+            align-items: center;
+            margin: 0;
+            line-height: 1;
         }
         
         .tag-list strong {
@@ -153,6 +125,34 @@
         .tag-button:hover, .tag-button.active {
             background: #3498db;
             color: white;
+        }
+        
+        .main-layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .tag-drawer-wrapper {
+            width: 300px;
+            flex-shrink: 0;
+            overflow-y: auto;
+            background: white;
+            border-right: 1px solid #ddd;
+        }
+        
+        .container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            width: 100%;
+        }
+        
+        .container > * {
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
         }
         
         .search-form {
@@ -355,6 +355,164 @@
         .back-link:hover {
             text-decoration: underline;
         }
+        
+        .search-context {
+            background: #f0f8ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .search-context h3 {
+            margin: 0 0 10px 0;
+            font-size: 1.1rem;
+        }
+        
+        .filter-controls {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .filter-controls form {
+            display: flex;
+            gap: 15px;
+            align-items: end;
+            flex-wrap: wrap;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .filter-group label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        
+        .filter-group select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.95rem;
+        }
+        
+        .add-tag-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .add-tag-main {
+            display: flex;
+            align-items: center;
+        }
+        
+        .add-tag-main button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px 0 0 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        
+        .add-tag-main .dropdown-toggle {
+            background: #2980b9;
+            border-radius: 0 4px 4px 0;
+            border-left: 1px solid rgba(255,255,255,0.3);
+            padding: 6px 8px;
+        }
+        
+        .add-tag-main button:hover {
+            background: #2980b9;
+        }
+        
+        .add-tag-main .dropdown-toggle:hover {
+            background: #21618c;
+        }
+        
+        .tag-dropdown-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            min-width: 200px;
+            z-index: 1000;
+            margin-top: 4px;
+        }
+        
+        .tag-dropdown-menu.show {
+            display: block;
+        }
+        
+        .tag-dropdown-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .tag-dropdown-item:hover {
+            background: #f0f8ff;
+        }
+        
+        .tag-dropdown-item:last-child {
+            border-bottom: none;
+        }
+        
+        .tag-dropdown-new {
+            padding: 8px 12px;
+            border-top: 2px solid #ddd;
+            background: #f9f9f9;
+            font-weight: 600;
+            color: #3498db;
+        }
+        
+        .remove-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+        
+        .remove-btn:hover {
+            background: #c0392b;
+        }
+        
+        .action-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            margin-left: 8px;
+        }
+        
+        .action-btn:hover {
+            background: #2980b9;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin: 30px 0;
+        }
     </style>
 </head>
 <body>
@@ -379,15 +537,209 @@
             </div>
         </div>
         
-        {% block header_tags %}{% endblock %}
+        {% if user.is_authenticated and user_tags %}
+        <div class="header-tags">
+            <div class="tag-list">
+                <strong>Your Tags:</strong>
+                {% for tag in user_tags %}
+                    <button class="tag-button {% if current_tag and current_tag.id == tag.id %}active{% endif %}"
+                            onclick="switchTag({{ tag.id }}, event)">
+                        {{ tag.name }} ({{ tag.tagged_papers.count }})
+                    </button>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
     </header>
     
     <div class="main-layout">
-        {% block drawer %}{% endblock %}
+        {% include 'papers/tag_drawer.html' %}
         
         <div class="container">
             {% block content %}{% endblock %}
         </div>
     </div>
+    
+    <script>
+        // Global variables
+        const currentTagId = {{ current_tag.id|default:"null" }};
+        
+        // Tag context functions
+        function closeTagContext() {
+            const params = new URLSearchParams(window.location.search);
+            params.delete('tag');
+            const newUrl = params.toString() ? `{% url 'papers:search' %}?${params.toString()}` : '{% url 'papers:search' %}';
+            window.location.href = newUrl;
+        }
+        
+        function switchTag(tagId, event) {
+            const params = new URLSearchParams(window.location.search);
+            params.set('tag', tagId);
+            window.location.href = `{% url 'papers:search' %}?${params.toString()}`;
+        }
+        
+        // Tag management functions
+        function removeFromTag(paperId) {
+            fetch("{% url 'papers:remove_from_tag' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `paper_id=${paperId}&tag_id=${currentTagId}`
+            }).then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Refresh drawer to remove the paper
+                    if (currentTagId) {
+                        fetch(`{% url 'papers:get_tag_drawer' %}?tag_id=${currentTagId}`)
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success) {
+                                    const drawerContent = document.getElementById('drawer-papers-list');
+                                    if (drawerContent) {
+                                        drawerContent.innerHTML = data.papers_html;
+                                    }
+                                }
+                            })
+                            .catch(error => console.error('Error updating drawer:', error));
+                    }
+                }
+            })
+            .catch(error => console.error('Error removing from tag:', error));
+        }
+        
+        function addToCurrentTag(paperId, event) {
+            if (event) event.stopPropagation();
+            
+            fetch("{% url 'papers:add_to_tag' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `paper_id=${paperId}&tag_id=${currentTagId}`
+            }).then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const dropdown = document.getElementById(`dropdown-${paperId}`);
+                    if (dropdown) dropdown.classList.remove('show');
+                    
+                    if (currentTagId) {
+                        fetch(`{% url 'papers:get_tag_drawer' %}?tag_id=${currentTagId}`)
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success) {
+                                    const drawerContent = document.getElementById('drawer-papers-list');
+                                    if (drawerContent) {
+                                        drawerContent.innerHTML = data.papers_html;
+                                    }
+                                }
+                            })
+                            .catch(error => console.error('Error updating drawer:', error));
+                    }
+                    
+                    addTagBadgeToPaper(paperId, data.tag_name);
+                }
+            })
+            .catch(error => console.error('Error adding to tag:', error));
+        }
+        
+        function addToTag(paperId, tagId, tagName) {
+            fetch("{% url 'papers:add_to_tag' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `paper_id=${paperId}&tag_id=${tagId}`
+            }).then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const dropdown = document.getElementById(`dropdown-${paperId}`);
+                    if (dropdown) dropdown.classList.remove('show');
+                    
+                    if (tagId == currentTagId) {
+                        fetch(`{% url 'papers:get_tag_drawer' %}?tag_id=${currentTagId}`)
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success) {
+                                    const drawerContent = document.getElementById('drawer-papers-list');
+                                    if (drawerContent) {
+                                        drawerContent.innerHTML = data.papers_html;
+                                    }
+                                }
+                            })
+                            .catch(error => console.error('Error updating drawer:', error));
+                    }
+                    
+                    addTagBadgeToPaper(paperId, tagName);
+                }
+            });
+        }
+        
+        function addToNewTag(paperId) {
+            const tagName = prompt("Enter new tag name:");
+            if (!tagName || !tagName.trim()) return;
+            
+            fetch("{% url 'papers:add_to_tag' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `paper_id=${paperId}&tag_name=${encodeURIComponent(tagName)}`
+            }).then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                }
+            });
+        }
+        
+        function toggleTagDropdown(event, paperId) {
+            event.stopPropagation();
+            const dropdown = document.getElementById(`dropdown-${paperId}`);
+            
+            document.querySelectorAll('.tag-dropdown-menu').forEach(d => {
+                if (d.id !== `dropdown-${paperId}`) {
+                    d.classList.remove('show');
+                }
+            });
+            
+            dropdown.classList.toggle('show');
+        }
+        
+        function addTagBadgeToPaper(paperId, tagName) {
+            const paperCard = document.querySelector(`[data-paper-id="${paperId}"]`);
+            if (!paperCard) return;
+            
+            const paperIdDiv = paperCard.querySelector('.paper-id');
+            if (!paperIdDiv) return;
+            
+            let tagsContainer = paperIdDiv.querySelector('.tags-container');
+            if (!tagsContainer) {
+                const arxivLink = paperIdDiv.querySelector('a');
+                tagsContainer = document.createElement('span');
+                tagsContainer.className = 'tags-container';
+                tagsContainer.style.marginLeft = '15px';
+                arxivLink.parentNode.insertBefore(tagsContainer, arxivLink.nextSibling);
+            }
+            
+            const tagBadge = document.createElement('span');
+            tagBadge.style.cssText = 'display: inline-block; padding: 2px 8px; background: #e0e0e0; color: #666; border-radius: 3px; font-size: 0.85rem; margin-right: 4px;';
+            tagBadge.textContent = `🏷️ ${tagName}`;
+            tagsContainer.appendChild(tagBadge);
+        }
+        
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', function(event) {
+            if (!event.target.closest('.add-tag-dropdown')) {
+                document.querySelectorAll('.tag-dropdown-menu').forEach(d => {
+                    d.classList.remove('show');
+                });
+            }
+        });
+    </script>
 </body>
 </html>
