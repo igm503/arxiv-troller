@@ -117,11 +117,11 @@ def unified_search_view(request):
             context["tagged_papers"] = tagged_papers
 
     if context["single_paper_id"]:
-        papers, search_context = _execute_single_paper_search(context)
+        papers, search_context = paper_search(context)
     elif context["search_all_tag"] and context["current_tag"]:
-        papers, search_context = _execute_tag_similarity_search(context)
+        papers, search_context = tag_search(context)
     elif context["query"]:
-        papers, search_context = _execute_keyword_search(context)
+        papers, search_context = keyword_search(context)
     else:
         papers, search_context = [], None
 
@@ -183,7 +183,7 @@ def unified_search_view(request):
     return render(request, "papers/unified.html", context)
 
 
-def _execute_keyword_search(context):
+def keyword_search(context):
     """Execute keyword search - returns (results, has_more, search_context, all_categories)"""
     query = context["query"]
     offset = context["offset"]
@@ -211,7 +211,7 @@ def _execute_keyword_search(context):
     return papers, search_context
 
 
-def _execute_single_paper_search(context):
+def paper_search(context):
     """Execute similarity search for a single paper - returns (results, has_more, search_context, all_categories)"""
     paper_id = context["single_paper_id"]
     paper = get_object_or_404(Paper, id=paper_id)
@@ -235,56 +235,7 @@ def _execute_single_paper_search(context):
     return papers, search_context
 
 
-def get_valid_similarity_papers(context, tag, current_paper=None):
-    excluded_ids = set(
-        RemovedPaper.objects.filter(tag=tag).values_list("paper_id", flat=True)
-    )
-
-    if tag is not None:
-        tagged_papers = TaggedPaper.objects.filter(tag=tag).select_related("paper")
-        tagged_paper_ids = set(tagged_papers.values_list("paper_id", flat=True))
-        excluded_ids.update(tagged_paper_ids)
-
-    if current_paper is not None:
-        excluded_ids.add(current_paper.id)
-
-    paper_query = Paper.objects.exclude(id__in=excluded_ids)
-    date_cutoff = get_date_cutoff(context["date_filter"])
-    if date_cutoff:
-        paper_query = paper_query.filter(created__gte=date_cutoff)
-    if context["category_filter"]:
-        paper_query = paper_query.filter(
-            categories__contains=[context["category_filter"]]
-        )
-
-    return paper_query.values_list("id", flat=True)
-
-
-def get_similar_embeddings(paper, valid_paper_ids, start_idx, end_idx):
-    embedding = Embedding.objects.filter(
-        paper=paper,
-        model_name="gemini-embedding-001",
-        embedding_type="abstract",
-    ).first()
-    if not embedding:
-        return []
-
-    similar_embeddings = list(
-        Embedding.objects.filter(
-            model_name="gemini-embedding-001",
-            embedding_type="abstract",
-            paper_id__in=valid_paper_ids,
-        )
-        .annotate(distance=L2Distance("vector", embedding.vector))
-        .select_related("paper")
-        .prefetch_related("paper__authors")
-        .order_by("distance")[start_idx:end_idx]
-    )
-
-    return [emb.paper for emb in similar_embeddings]
-
-
-def _execute_tag_similarity_search(context):
+def tag_search(context):
     """Execute similarity search for all papers in a tag - returns (results, has_more, search_context, all_categories)"""
     tag = context["current_tag"]
     offset = context["offset"]
@@ -317,23 +268,15 @@ def _execute_tag_similarity_search(context):
         if similars:
             results.append(similars)
 
-    # Interleave results
-    interleaved_results = []
+    seen_papers = set()
+    papers = []
     for i in range(papers_per_source):
         for result_group in results:
-            if len(result_group) > i:
-                interleaved_results.append(result_group[i])
+            if len(result_group) > i and result_group[i].id not in seen_papers:
+                seen_papers.add(result_group[i].id)
+                papers.append(result_group[i])
 
-    # Remove duplicates
-    seen_papers = set()
-    unique_results = []
-    for paper in interleaved_results:
-        if paper.id not in seen_papers:
-            seen_papers.add(paper.id)
-            unique_results.append(paper)
-    papers = unique_results
-
-    return papers, search_context
+    return papers[offset:], search_context
 
 
 def paper_detail(request, paper_id):
@@ -398,3 +341,52 @@ def paper_detail(request, paper_id):
             "paper_tags": paper_tags,
         },
     )
+
+
+def get_valid_similarity_papers(context, tag, current_paper=None):
+    excluded_ids = set(
+        RemovedPaper.objects.filter(tag=tag).values_list("paper_id", flat=True)
+    )
+
+    if tag is not None:
+        tagged_papers = TaggedPaper.objects.filter(tag=tag).select_related("paper")
+        tagged_paper_ids = set(tagged_papers.values_list("paper_id", flat=True))
+        excluded_ids.update(tagged_paper_ids)
+
+    if current_paper is not None:
+        excluded_ids.add(current_paper.id)
+
+    paper_query = Paper.objects.exclude(id__in=excluded_ids)
+    date_cutoff = get_date_cutoff(context["date_filter"])
+    if date_cutoff:
+        paper_query = paper_query.filter(created__gte=date_cutoff)
+    if context["category_filter"]:
+        paper_query = paper_query.filter(
+            categories__contains=[context["category_filter"]]
+        )
+
+    return paper_query.values_list("id", flat=True)
+
+
+def get_similar_embeddings(paper, valid_paper_ids, start_idx, end_idx):
+    embedding = Embedding.objects.filter(
+        paper=paper,
+        model_name="gemini-embedding-001",
+        embedding_type="abstract",
+    ).first()
+    if not embedding:
+        return []
+
+    similar_embeddings = list(
+        Embedding.objects.filter(
+            model_name="gemini-embedding-001",
+            embedding_type="abstract",
+            paper_id__in=valid_paper_ids,
+        )
+        .annotate(distance=L2Distance("vector", embedding.vector))
+        .select_related("paper")
+        .prefetch_related("paper__authors")
+        .order_by("distance")[start_idx:end_idx]
+    )
+
+    return [emb.paper for emb in similar_embeddings]
