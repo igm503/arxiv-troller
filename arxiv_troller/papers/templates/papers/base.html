@@ -562,7 +562,7 @@
     
     <script>
         // Global variables
-        const currentTagId = {{ current_tag.id|default:"null" }};
+        let currentTagId = {{ current_tag.id|default:"null" }};
         
         // Tag context functions
         function closeTagContext() {
@@ -573,9 +573,50 @@
         }
         
         function switchTag(tagId, event) {
+            // Update URL without reload
             const params = new URLSearchParams(window.location.search);
             params.set('tag', tagId);
-            window.location.href = `{% url 'papers:search' %}?${params.toString()}`;
+
+            const newUrl = window.location.pathname + '?' + params.toString();
+            window.history.pushState({}, '', newUrl);
+            
+            // Update active button styling
+            document.querySelectorAll('.tag-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            if (event && event.target) {
+                event.target.classList.add('active');
+            }
+            
+            // Update global tag ID
+            currentTagId = tagId;
+            
+            // Update all paper detail links on the page to use the new tag
+            document.querySelectorAll('.paper-title a').forEach(link => {
+                const url = new URL(link.href);
+                url.searchParams.set('tag', tagId);
+                link.href = url.toString();
+            });
+            
+            // Fetch and update drawer content via AJAX
+            fetch(`{% url 'papers:get_tag_drawer' %}?tag_id=${tagId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Update drawer header
+                        const drawerHeader = document.querySelector('.tag-drawer-wrapper h3');
+                        if (drawerHeader) {
+                            drawerHeader.textContent = data.tag_name;
+                        }
+                        
+                        // Update drawer papers list
+                        const drawerContent = document.getElementById('drawer-papers-list');
+                        if (drawerContent) {
+                            drawerContent.innerHTML = data.papers_html;
+                        }
+                    }
+                })
+                .catch(error => console.error('Error switching tag:', error));
         }
         
         // Tag management functions
@@ -599,6 +640,12 @@
                                     const drawerContent = document.getElementById('drawer-papers-list');
                                     if (drawerContent) {
                                         drawerContent.innerHTML = data.papers_html;
+                                    }
+                                    
+                                    // Get the tag name from the drawer header
+                                    const drawerHeader = document.querySelector('.tag-drawer-wrapper h3');
+                                    if (drawerHeader) {
+                                        removeTagBadgeFromPaper(paperId, drawerHeader.textContent);
                                     }
                                 }
                             })
@@ -712,24 +759,65 @@
         
         function addTagBadgeToPaper(paperId, tagName) {
             const paperCard = document.querySelector(`[data-paper-id="${paperId}"]`);
+
             if (!paperCard) return;
             
-            const paperIdDiv = paperCard.querySelector('.paper-id');
-            if (!paperIdDiv) return;
+            // First, check if we're on the detail page by looking for the dedicated tags container
+            let tagsContainer = document.getElementById('detail-tags-container');
             
-            let tagsContainer = paperIdDiv.querySelector('.tags-container');
+            // If not on detail page, look for or create tags container in the paper-id section (search page)
             if (!tagsContainer) {
-                const arxivLink = paperIdDiv.querySelector('a');
-                tagsContainer = document.createElement('span');
-                tagsContainer.className = 'tags-container';
-                tagsContainer.style.marginLeft = '15px';
-                arxivLink.parentNode.insertBefore(tagsContainer, arxivLink.nextSibling);
+                const paperIdDiv = paperCard.querySelector('.paper-id');
+                if (!paperIdDiv) return;
+                
+                tagsContainer = paperIdDiv.querySelector('.tags-container');
+                if (!tagsContainer) {
+                    const arxivLink = paperIdDiv.querySelector('a');
+                    if (!arxivLink) return;
+                    
+                    tagsContainer = document.createElement('span');
+                    tagsContainer.className = 'tags-container';
+                    tagsContainer.style.marginLeft = '15px';
+                    arxivLink.parentNode.insertBefore(tagsContainer, arxivLink.nextSibling);
+                }
             }
             
+            // Check if tag badge already exists
+            const existingBadges = tagsContainer.querySelectorAll('span[data-tag-name]');
+            for (let badge of existingBadges) {
+                if (badge.dataset.tagName === tagName) {
+                    return; // Tag already displayed
+                }
+            }
+            
+            // Create and add the new tag badge
             const tagBadge = document.createElement('span');
             tagBadge.style.cssText = 'display: inline-block; padding: 2px 8px; background: #e0e0e0; color: #666; border-radius: 3px; font-size: 0.85rem; margin-right: 4px;';
             tagBadge.textContent = `🏷️ ${tagName}`;
+            tagBadge.dataset.tagName = tagName;
             tagsContainer.appendChild(tagBadge);
+        }
+        
+        function removeTagBadgeFromPaper(paperId, tagName) {
+            const paperCard = document.querySelector(`[data-paper-id="${paperId}"]`);
+            if (!paperCard) return;
+            
+            const tagsContainer = paperCard.querySelector('.tags-container');
+            if (!tagsContainer) return;
+            
+            // Find and remove the badge with matching tag name
+            const badges = tagsContainer.querySelectorAll('span');
+            for (let badge of badges) {
+                if (badge.dataset.tagName === tagName) {
+                    badge.remove();
+                    break;
+                }
+            }
+            
+            // If no badges left, remove the container
+            if (tagsContainer.children.length === 0) {
+                tagsContainer.remove();
+            }
         }
         
         // Close dropdowns when clicking outside

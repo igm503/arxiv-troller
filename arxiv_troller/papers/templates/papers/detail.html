@@ -19,7 +19,7 @@
     ← Back to Search
 </a>
 
-<div class="paper-card">
+<div class="paper-card" data-paper-id="{{ paper.id }}">
     <h1 class="paper-title">{{ paper.title }}</h1>
     
     <div class="paper-authors">
@@ -65,11 +65,11 @@
     </div>
     
     {% if user.is_authenticated %}
-    <div style="margin-top: 1.5rem;">
+    <div style="margin-top: 1.5rem;" id="tag-actions-section">
         {% if current_tag %}
             <div class="add-tag-dropdown" style="display: inline-block;">
                 <div class="add-tag-main">
-                    <button onclick="addToCurrentTag({{ paper.id }})">+ Add to {{ current_tag.name }}</button>
+                    <button onclick="addToCurrentTag({{ paper.id }})">+ Add Tag</button>
                     <button class="dropdown-toggle" onclick="toggleTagDropdown(event, {{ paper.id }})">▼</button>
                 </div>
                 <div class="tag-dropdown-menu" id="dropdown-{{ paper.id }}">
@@ -86,7 +86,7 @@
         {% else %}
             <div class="add-tag-dropdown" style="display: inline-block;">
                 <button class="btn" onclick="toggleTagDropdown(event, {{ paper.id }})">
-                    + Add to Tag ▼
+                    + Add Tag ▼
                 </button>
                 <div class="tag-dropdown-menu" id="dropdown-{{ paper.id }}">
                     {% for tag in user_tags %}
@@ -100,6 +100,14 @@
                 </div>
             </div>
         {% endif %}
+        
+      <span class="tags-container" style="margin-left: 15px;" id="detail-tags-container">
+          {% for tag_name in paper_tags %}
+              <span style="display: inline-block; padding: 2px 8px; background: #e0e0e0; color: #666; border-radius: 3px; font-size: 0.85rem; margin-right: 4px;" data-tag-name="{{ tag_name }}">
+                  🏷️ {{ tag_name }}
+              </span>
+          {% endfor %}
+      </span>
     </div>
     {% endif %}
     

@@ -1,7 +1,7 @@
 import re
 from datetime import datetime, timedelta
 
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
 from django.core.paginator import Paginator
 from pgvector.django import L2Distance
 from django.db import connection
@@ -422,6 +422,7 @@ def paper_detail(request, paper_id):
     current_tag = None
     user_tags = []
     tagged_papers = []
+    paper_tags = []
     
     if request.user.is_authenticated:
         user_tags = Tag.objects.filter(user=request.user).prefetch_related("tagged_papers")
@@ -435,6 +436,13 @@ def paper_detail(request, paper_id):
                     tagged_papers = tagged_papers.order_by("paper__title")
                 else:
                     tagged_papers = tagged_papers.order_by("-added_at")
+        
+        # Get tags for this specific paper
+        paper_tag_objs = TaggedPaper.objects.filter(
+            tag__user=request.user,
+            paper=paper
+        ).select_related('tag')
+        paper_tags = [tp.tag.name for tp in paper_tag_objs]
     
     return render(
         request,
@@ -447,14 +455,13 @@ def paper_detail(request, paper_id):
             "current_tag": current_tag,
             "user_tags": user_tags,
             "tagged_papers": tagged_papers,
+            "paper_tags": paper_tags,
         },
     )
 
 
-# Keep the old similar_papers view for backwards compatibility if needed
 def similar_papers(request, paper_id):
     """Redirect to unified search with single paper context"""
-    from django.shortcuts import redirect
     
     params = f"?single_paper={paper_id}"
     

@@ -105,7 +105,7 @@
                     {% if item.tags %}
                     <span class="tags-container" style="margin-left: 15px;">
                         {% for tag_name in item.tags %}
-                            <span style="display: inline-block; padding: 2px 8px; background: #e0e0e0; color: #666; border-radius: 3px; font-size: 0.85rem; margin-right: 4px;">
+                            <span style="display: inline-block; padding: 2px 8px; background: #e0e0e0; color: #666; border-radius: 3px; font-size: 0.85rem; margin-right: 4px;" data-tag-name="{{ tag_name }}">
                                 🏷️ {{ tag_name }}
                             </span>
                         {% endfor %}
@@ -116,7 +116,7 @@
                         {% if current_tag %}
                             <div class="add-tag-dropdown" style="display: inline-block;">
                                 <div class="add-tag-main">
-                                    <button onclick="addToCurrentTag({{ item.paper.id }}, event)">+ Add to Tag</button>
+                                    <button onclick="addToCurrentTag({{ item.paper.id }}, event)">+ Add Tag</button>
                                     <button class="dropdown-toggle" onclick="toggleTagDropdown(event, {{ item.paper.id }})">▼</button>
                                 </div>
                                 <div class="tag-dropdown-menu" id="dropdown-{{ item.paper.id }}">
@@ -133,7 +133,7 @@
                         {% else %}
                             <div class="add-tag-dropdown" style="display: inline-block;">
                                 <button class="action-btn" onclick="toggleTagDropdown(event, {{ item.paper.id }})">
-                                    + Add to Tag ▼
+                                    + Add Tag ▼
                                 </button>
                                 <div class="tag-dropdown-menu" id="dropdown-{{ item.paper.id }}">
                                     {% for tag in user_tags %}
