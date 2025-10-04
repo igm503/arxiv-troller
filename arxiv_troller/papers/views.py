@@ -77,7 +77,7 @@ def get_date_cutoff(date_filter):
 
 def unified_search_view(request):
     """Unified view for all search types: keyword, tag similarity, single paper similarity"""
-    # Check if this is an AJAX request for more results
+
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     offset = int(request.GET.get("offset", 0))
 
@@ -85,7 +85,6 @@ def unified_search_view(request):
         cursor.execute("SET hnsw.ef_search = 200")
         cursor.execute("SET hnsw.iterative_scan = 'strict_order'")
 
-    # Initialize context
     context = {
         "user_tags": [],
         "current_tag": None,
@@ -117,7 +116,6 @@ def unified_search_view(request):
                 tagged_papers = tagged_papers.order_by("-added_at")
             context["tagged_papers"] = tagged_papers
 
-    # Execute search and get results + metadata
     if context["single_paper_id"]:
         papers, search_context = _execute_single_paper_search(context)
     elif context["search_all_tag"] and context["current_tag"]:
@@ -155,7 +153,6 @@ def unified_search_view(request):
         {"paper": paper, "tags": paper_tags.get(paper.id, [])} for paper in papers
     ]
 
-    # Handle AJAX request - return JSON
     if is_ajax:
         html = render_to_string(
             "papers/_paper_card.html",
@@ -176,7 +173,6 @@ def unified_search_view(request):
             }
         )
 
-    # Handle full page load
     context["results"] = results
     context["has_more"] = has_more
     context["search_context"] = search_context
@@ -200,7 +196,6 @@ def _execute_keyword_search(context):
         "query": query,
     }
 
-    # Apply filters
     papers = Paper.objects.filter(title__icontains=query)
     date_cutoff = get_date_cutoff(context["date_filter"])
     if date_cutoff:
@@ -208,7 +203,6 @@ def _execute_keyword_search(context):
     if context["category_filter"]:
         papers = papers.filter(categories__contains=[context["category_filter"]])
 
-    # Fetch one more than needed to check if there are more results
     papers = papers.prefetch_related("authors").order_by("-created")[
         offset : offset + RESULTS_PER_PAGE + 1
     ]
@@ -221,6 +215,7 @@ def _execute_single_paper_search(context):
     """Execute similarity search for a single paper - returns (results, has_more, search_context, all_categories)"""
     paper_id = context["single_paper_id"]
     paper = get_object_or_404(Paper, id=paper_id)
+    tag = context["current_tag"]
     offset = context["offset"]
 
     if not context["date_filter"]:
@@ -231,26 +226,28 @@ def _execute_single_paper_search(context):
         "paper": paper,
     }
 
-    embedding = Embedding.objects.filter(
-        paper=paper,
-        model_name="gemini-embedding-001",
-        embedding_type="abstract",
-    ).first()
+    valid_paper_ids = get_valid_similarity_papers(context, tag, paper)
 
-    if not embedding:
-        return [], search_context
+    papers = get_similar_embeddings(
+        paper, valid_paper_ids, offset, offset + RESULTS_PER_PAGE + 1
+    )
 
-    # Build excluded IDs
-    excluded_ids = {paper.id}
-    if context["current_tag"]:
-        removed_ids = set(
-            RemovedPaper.objects.filter(tag=context["current_tag"]).values_list(
-                "paper_id", flat=True
-            )
-        )
-        excluded_ids.update(removed_ids)
+    return papers, search_context
 
-    # Build base query
+
+def get_valid_similarity_papers(context, tag, current_paper=None):
+    excluded_ids = set(
+        RemovedPaper.objects.filter(tag=tag).values_list("paper_id", flat=True)
+    )
+
+    if tag is not None:
+        tagged_papers = TaggedPaper.objects.filter(tag=tag).select_related("paper")
+        tagged_paper_ids = set(tagged_papers.values_list("paper_id", flat=True))
+        excluded_ids.update(tagged_paper_ids)
+
+    if current_paper is not None:
+        excluded_ids.add(current_paper.id)
+
     paper_query = Paper.objects.exclude(id__in=excluded_ids)
     date_cutoff = get_date_cutoff(context["date_filter"])
     if date_cutoff:
@@ -260,9 +257,18 @@ def _execute_single_paper_search(context):
             categories__contains=[context["category_filter"]]
         )
 
-    valid_paper_ids = paper_query.values_list("id", flat=True)
+    return paper_query.values_list("id", flat=True)
 
-    # Get similar papers
+
+def get_similar_embeddings(paper, valid_paper_ids, start_idx, end_idx):
+    embedding = Embedding.objects.filter(
+        paper=paper,
+        model_name="gemini-embedding-001",
+        embedding_type="abstract",
+    ).first()
+    if not embedding:
+        return []
+
     similar_embeddings = list(
         Embedding.objects.filter(
             model_name="gemini-embedding-001",
@@ -272,12 +278,10 @@ def _execute_single_paper_search(context):
         .annotate(distance=L2Distance("vector", embedding.vector))
         .select_related("paper")
         .prefetch_related("paper__authors")
-        .order_by("distance")[offset : offset + RESULTS_PER_PAGE + 1]
+        .order_by("distance")[start_idx:end_idx]
     )
 
-    papers = [emb.paper for emb in similar_embeddings]
-
-    return papers, search_context
+    return [emb.paper for emb in similar_embeddings]
 
 
 def _execute_tag_similarity_search(context):
@@ -298,24 +302,7 @@ def _execute_tag_similarity_search(context):
     if not source_papers:
         return [], search_context
 
-    # Get removed and tagged paper IDs
-    removed_paper_ids = set(
-        RemovedPaper.objects.filter(tag=tag).values_list("paper_id", flat=True)
-    )
-    tagged_paper_ids = set(tagged_papers.values_list("paper_id", flat=True))
-    excluded_ids = removed_paper_ids | tagged_paper_ids
-
-    # Build base query
-    paper_query = Paper.objects.exclude(id__in=excluded_ids)
-    date_cutoff = get_date_cutoff(context["date_filter"])
-    if date_cutoff:
-        paper_query = paper_query.filter(created__gte=date_cutoff)
-    if context["category_filter"]:
-        paper_query = paper_query.filter(
-            categories__contains=[context["category_filter"]]
-        )
-
-    valid_paper_ids = paper_query.values_list("id", flat=True)
+    valid_paper_ids = get_valid_similarity_papers(context, tag)
 
     # Calculate papers per source - need enough to cover offset + page + 1
     total_needed = offset + RESULTS_PER_PAGE + 1
@@ -323,29 +310,12 @@ def _execute_tag_similarity_search(context):
 
     results = []
     for tagged in source_papers:
-        embedding = Embedding.objects.filter(
-            paper=tagged.paper,
-            model_name="gemini-embedding-001",
-            embedding_type="abstract",
-        ).first()
-
-        if not embedding:
-            continue
-
-        similars = list(
-            Embedding.objects.filter(
-                model_name="gemini-embedding-001",
-                embedding_type="abstract",
-                paper_id__in=valid_paper_ids,
-            )
-            .annotate(distance=L2Distance("vector", embedding.vector))
-            .select_related("paper")
-            .prefetch_related("paper__authors")
-            .order_by("distance")[:papers_per_source]
+        similars = get_similar_embeddings(
+            tagged.paper, valid_paper_ids, 0, papers_per_source
         )
 
         if similars:
-            results.append([similar.paper for similar in similars])
+            results.append(similars)
 
     # Interleave results
     interleaved_results = []
