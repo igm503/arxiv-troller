@@ -76,6 +76,7 @@ def unified_search_view(request):
     """Unified view for all search types: keyword, tag similarity, single paper similarity"""
     with connection.cursor() as cursor:
         cursor.execute("SET hnsw.ef_search = 200")
+        cursor.execute("SET hnsw.iterative_scan = strict_order")
 
     # Initialize context
     context = {
@@ -471,20 +472,3 @@ def paper_detail(request, paper_id):
             "paper_tags": paper_tags,
         },
     )
-
-
-def similar_papers(request, paper_id):
-    """Redirect to unified search with single paper context"""
-
-    params = f"?single_paper={paper_id}"
-
-    # Preserve tag context if present
-    tag_id = request.GET.get("tag")
-    if tag_id:
-        params += f"&tag={tag_id}"
-
-    # Set default filter
-    if not request.GET.get("date_filter"):
-        params += "&date_filter=1week"
-
-    return redirect(f"/papers/{params}")
