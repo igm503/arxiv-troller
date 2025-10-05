@@ -59,7 +59,7 @@ def remove_from_tag(request):
     tag = get_object_or_404(Tag, id=tag_id, user=request.user)
     TaggedPaper.objects.filter(tag=tag, paper_id=paper_id).delete()
 
-    return JsonResponse({"success": True})
+    return JsonResponse({"success": True, "tag_name": tag.name})
 
 
 @login_required

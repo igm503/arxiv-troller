@@ -654,7 +654,8 @@
             }).then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Refresh drawer to remove the paper
+                    removeTagBadgeFromPaper(paperId, data.tag_name);
+                    
                     if (currentTagId) {
                         fetch(`{% url 'papers:get_tag_drawer' %}?tag_id=${currentTagId}`)
                             .then(response => response.json())
@@ -663,12 +664,6 @@
                                     const drawerContent = document.getElementById('drawer-papers-list');
                                     if (drawerContent) {
                                         drawerContent.innerHTML = data.papers_html;
-                                    }
-                                    
-                                    // Get the tag name from the drawer header
-                                    const drawerHeader = document.querySelector('.tag-drawer-wrapper h3');
-                                    if (drawerHeader) {
-                                        removeTagBadgeFromPaper(paperId, drawerHeader.textContent);
                                     }
                                 }
                             })
