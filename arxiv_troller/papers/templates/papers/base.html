@@ -566,6 +566,11 @@
         
         // Tag context functions
         function closeTagContext() {
+            const drawer = document.querySelector('.tag-drawer-wrapper');
+            if (drawer) {
+                drawer.style.display = 'none';
+            }
+            
             const params = new URLSearchParams(window.location.search);
             params.delete('tag');
             const newUrl = params.toString() ? `{% url 'papers:search' %}?${params.toString()}` : '{% url 'papers:search' %}';
@@ -576,7 +581,6 @@
             // Update URL without reload
             const params = new URLSearchParams(window.location.search);
             params.set('tag', tagId);
-
             const newUrl = window.location.pathname + '?' + params.toString();
             window.history.pushState({}, '', newUrl);
             
@@ -603,6 +607,13 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
+                        const drawer = document.querySelector('.tag-drawer-wrapper');
+                        
+                        // Show the drawer
+                        if (drawer) {
+                            drawer.style.display = '';
+                        }
+                        
                         // Update drawer header
                         const drawerHeader = document.querySelector('.tag-drawer-wrapper h3');
                         if (drawerHeader) {
@@ -613,6 +624,18 @@
                         const drawerContent = document.getElementById('drawer-papers-list');
                         if (drawerContent) {
                             drawerContent.innerHTML = data.papers_html;
+                        }
+                        
+                        // Update search all button - show if there are papers
+                        const searchAllContainer = document.getElementById('drawer-search-all');
+                        if (searchAllContainer) {
+                            // Check if papers_html is not just the "No papers" message
+                            const hasPapers = !data.papers_html.includes('No papers tagged yet');
+                            if (hasPapers) {
+                                searchAllContainer.innerHTML = '<button class="btn" onclick="searchAllTagPapers()" style="width: 100%;">🔍 Search All Papers</button>';
+                            } else {
+                                searchAllContainer.innerHTML = '';
+                            }
                         }
                     }
                 })
