@@ -142,38 +142,56 @@
   // Load more functionality
   const loadMoreBtn = document.getElementById('load-more-btn');
   if (loadMoreBtn) {
+    let loadedPaperIds = [];
+    
+    // Collect initially loaded paper IDs
+    document.querySelectorAll('.paper-card').forEach(card => {
+      loadedPaperIds.push(parseInt(card.dataset.paperId));
+    });
+
     loadMoreBtn.addEventListener('click', function () {
-      const offset = parseInt(this.dataset.offset);
       const params = new URLSearchParams(window.location.search);
-      params.set('offset', offset);
+      const queryParams = Object.fromEntries(params);
 
       // Disable button while loading
       this.disabled = true;
       this.textContent = 'Loading...';
 
-      fetch('{% url "papers:search" %}?' + params.toString(), {
+      fetch('{% url "papers:search" %}', {
+        method: 'POST',
         headers: {
-          'X-Requested-With': 'XMLHttpRequest'
-        }
+          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type': 'application/json',
+          'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+          exclude_ids: loadedPaperIds,
+          query_params: queryParams
+        })
       })
         .then(response => response.json())
         .then(data => {
           if (data.success) {
             // Insert new results before the load more button
-            const container = document.getElementById('results-container');
             const loadMoreContainer = document.getElementById('load-more-container');
             loadMoreContainer.insertAdjacentHTML('beforebegin', data.html);
+
+            // Collect newly loaded paper IDs
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = data.html;
+            tempDiv.querySelectorAll('.paper-card').forEach(card => {
+              loadedPaperIds.push(parseInt(card.dataset.paperId));
+            });
 
             // Attach abstract drawer listeners to new cards
             attachAbstractDrawerListeners();
 
-            if (data.has_more) {
-              // Update offset and re-enable button
-              loadMoreBtn.dataset.offset = data.next_offset;
+            if (data.has_more && loadedPaperIds.length < 1000) {
+              // Re-enable button
               loadMoreBtn.disabled = false;
               loadMoreBtn.textContent = 'Load More Results';
             } else {
-              // Remove button if no more results
+              // Remove button if no more results or hit limit
               loadMoreContainer.remove();
             }
           }
