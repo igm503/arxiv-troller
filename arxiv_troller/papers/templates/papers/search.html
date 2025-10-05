@@ -50,24 +50,47 @@
 
       <div class="filter-group">
         <label>Date Range:</label>
-        <select name="date_filter" onchange="this.form.submit()">
-          <option value="all" {% if date_filter == 'all' %}selected{% endif %}>All Time</option>
-          <option value="1week" {% if date_filter == '1week' %}selected{% endif %}>Last Week</option>
-          <option value="1month" {% if date_filter == '1month' %}selected{% endif %}>Last Month</option>
-          <option value="3months" {% if date_filter == '3months' %}selected{% endif %}>Last 3 Months</option>
-          <option value="6months" {% if date_filter == '6months' %}selected{% endif %}>Last 6 Months</option>
-          <option value="1year" {% if date_filter == '1year' %}selected{% endif %}>Last Year</option>
-        </select>
+        <div class="add-tag-dropdown" style="display: inline-block; width: 200px;">
+          <button type="button" onclick="toggleFilterDropdown(event, 'date-filter')" 
+                  style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; background: #e8eaed; color: #000000; border: 1px solid #000000; padding: 0.5rem 0.75rem; border-radius: 0; cursor: pointer; font-size: 0.875rem; font-family: 'Inter', sans-serif; font-weight: 500;">
+            <span id="date-filter-selected">
+              {% if date_filter == '1week' %}Last Week
+              {% elif date_filter == '1month' %}Last Month
+              {% elif date_filter == '3months' %}Last 3 Months
+              {% elif date_filter == '6months' %}Last 6 Months
+              {% elif date_filter == '1year' %}Last Year
+              {% else %}All Time{% endif %}
+            </span>
+            <span style="font-size: 0.5rem;">▼</span>
+          </button>
+          <div class="tag-dropdown-menu" id="dropdown-date-filter" style="width: 100%;">
+            <div class="tag-dropdown-item" onclick="setFilter('date_filter', 'all', 'All Time')">All Time</div>
+            <div class="tag-dropdown-item" onclick="setFilter('date_filter', '1week', 'Last Week')">Last Week</div>
+            <div class="tag-dropdown-item" onclick="setFilter('date_filter', '1month', 'Last Month')">Last Month</div>
+            <div class="tag-dropdown-item" onclick="setFilter('date_filter', '3months', 'Last 3 Months')">Last 3 Months</div>
+            <div class="tag-dropdown-item" onclick="setFilter('date_filter', '6months', 'Last 6 Months')">Last 6 Months</div>
+            <div class="tag-dropdown-item" onclick="setFilter('date_filter', '1year', 'Last Year')">Last Year</div>
+          </div>
+        </div>
       </div>
 
       <div class="filter-group">
         <label>Category:</label>
-        <select name="category" onchange="this.form.submit()">
-          <option value="">All Categories</option>
-          {% for cat in all_categories %}
-          <option value="{{ cat }}" {% if category_filter == cat %}selected{% endif %}>{{ cat }}</option>
-          {% endfor %}
-        </select>
+        <div class="add-tag-dropdown" style="display: inline-block; width: 200px;">
+          <button type="button" onclick="toggleFilterDropdown(event, 'category-filter')" 
+                  style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; background: #e8eaed; color: #000000; border: 1px solid #000000; padding: 0.5rem 0.75rem; border-radius: 0; cursor: pointer; font-size: 0.875rem; font-family: 'Inter', sans-serif; font-weight: 500;">
+            <span id="category-filter-selected">
+              {% if category_filter %}{{ category_filter }}{% else %}All Categories{% endif %}
+            </span>
+            <span style="font-size: 0.5rem;">▼</span>
+          </button>
+          <div class="tag-dropdown-menu" id="dropdown-category-filter" style="width: 100%;">
+            <div class="tag-dropdown-item" onclick="setFilter('category', '', 'All Categories')">All Categories</div>
+            {% for cat in all_categories %}
+            <div class="tag-dropdown-item" onclick="setFilter('category', '{{ cat }}', '{{ cat }}')">{{ cat }}</div>
+            {% endfor %}
+          </div>
+        </div>
       </div>
     </form>
   </div>
@@ -94,6 +117,29 @@
 </div>
 
 <script>
+  // Filter dropdown functions
+  function toggleFilterDropdown(event, filterId) {
+    event.stopPropagation();
+    const dropdown = document.getElementById(`dropdown-${filterId}`);
+    
+    document.querySelectorAll('.tag-dropdown-menu').forEach(d => {
+      if (d.id !== `dropdown-${filterId}`) {
+        d.classList.remove('show');
+      }
+    });
+    
+    dropdown.classList.toggle('show');
+  }
+
+  function setFilter(paramName, value, displayText) {
+    const params = new URLSearchParams(window.location.search);
+    if (value) {
+      params.set(paramName, value);
+    } else {
+      params.delete(paramName);
+    }
+    window.location.search = params.toString();
+  }
 
   // Extract abstract drawer logic into reusable function
   function attachAbstractDrawerListeners() {
