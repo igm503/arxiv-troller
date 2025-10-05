@@ -94,28 +94,6 @@
 </div>
 
 <script>
-  // Page-specific functions for search page only
-  function searchAllTagPapers() {
-    const params = new URLSearchParams(window.location.search);
-    params.set('search_all', '1');
-    params.delete('single_paper');
-    params.delete('q');
-    if (!params.has('date_filter')) {
-      params.set('date_filter', '1week');
-    }
-    window.location.href = `{% url 'papers:search' %}?${params.toString()}`;
-  }
-
-  function searchSinglePaper(paperId) {
-    const params = new URLSearchParams(window.location.search);
-    params.set('single_paper', paperId);
-    params.delete('search_all');
-    params.delete('q');
-    if (!params.has('date_filter')) {
-      params.set('date_filter', '1week');
-    }
-    window.location.href = `{% url 'papers:search' %}?${params.toString()}`;
-  }
 
   // Extract abstract drawer logic into reusable function
   function attachAbstractDrawerListeners() {
