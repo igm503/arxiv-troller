@@ -158,14 +158,25 @@
             font-size: 0.75rem;
             letter-spacing: 0.05em;
         }
-        
+
+        .tag-badge {
+            display: inline-block;
+            padding: 0.35rem 0.625rem;
+            background: #f3f4f6;
+            color: #000000;
+            border: 1px solid #000000;
+            font-size: 0.8125rem;
+            margin-right: 0.25rem;
+        }
+
         .tag-button {
             padding: 0.4rem 0.75rem;
-            background: #e8eaed;
+            background: #4a5568;
             border: 1px solid #000000;
             border-radius: 0;
             text-decoration: none;
-            color: #000000;
+
+            color: #ffffff;
             cursor: pointer;
             font-size: 0.875rem;
             font-weight: 500;
@@ -176,12 +187,13 @@
         
         .tag-button:hover {
             background: #d1d5db;
+            color: #000000;
             font-weight: 600;
         }
         
         .tag-button.active {
-            background: #4a5568;
-            color: #ffffff;
+            background: #e8eaed;
+            color: #000000;
         }
         
         .main-layout {
@@ -215,13 +227,14 @@
         .search-form {
             background: #f5f5f5;
             padding: 1.5rem;
+            padding-right: 1.0rem;
             border: 1px solid #000000;
             border-radius: 0;
             margin-bottom: 1.5rem;
         }
         
         .search-form input[type="text"] {
-            width: 70%;
+            width: 89%;
             padding: 0.75rem 1rem;
             font-size: 0.875rem;
             border: 1px solid #000000;
@@ -282,7 +295,6 @@
         
         .paper-authors {
             color: #666666;
-            margin-bottom: 0.5rem;
             font-size: 0.875rem;
         }
         
@@ -317,10 +329,10 @@
             overflow: hidden;
             transition: max-height 0.3s ease-out;
             background: #e8eaed;
-            margin-top: 0.5rem;
         }
         
         .abstract-drawer.open {
+            margin-top: 0.5rem;
             max-height: 500px;
             overflow-y: auto;
             padding: 1rem;
@@ -494,7 +506,7 @@
             background: #4a5568;
             color: #ffffff;
             border: 1px solid #000000;
-            padding: 0.5rem 0.75rem;
+            padding: 0.25rem 0.75rem;
             border-radius: 0;
             cursor: pointer;
             font-size: 0.875rem;
@@ -504,8 +516,8 @@
         
         .add-tag-main .dropdown-toggle {
             background: #5a6678;
-            border-left: 1px solid #7a8698;
-            padding: 0.5rem 0.625rem;
+            border-left: 1px solid #5a6678;
+            padding: 0.25rem 0.625rem;
         }
         
         .add-tag-main button:hover {
@@ -629,7 +641,7 @@
         {% if user.is_authenticated and user_tags %}
         <div class="header-tags">
             <div class="tag-list">
-                <strong>Your Tags:</strong>
+                <strong>Tags:</strong>
                 {% for tag in user_tags %}
                     <button class="tag-button {% if current_tag and current_tag.id == tag.id %}active{% endif %}"
                             onclick="switchTag({{ tag.id }}, event)">
@@ -721,7 +733,7 @@
                             // Check if papers_html is not just the "No papers" message
                             const hasPapers = !data.papers_html.includes('No papers tagged yet');
                             if (hasPapers) {
-                                searchAllContainer.innerHTML = '<button class="btn" onclick="searchAllTagPapers()" style="width: 100%;">🔍 Search All Papers</button>';
+                                searchAllContainer.innerHTML = '<button class="btn" onclick="searchAllTagPapers()" style="width: 100%;">Search Similar Papers</button>';
                             } else {
                                 searchAllContainer.innerHTML = '';
                             }
@@ -761,6 +773,7 @@
                 }
             })
             .catch(error => console.error('Error removing from tag:', error));
+            toggleEditMode();
         }
         
         function addToCurrentTag(paperId, event) {
@@ -866,7 +879,6 @@
         
         function addTagBadgeToPaper(paperId, tagName) {
             const paperCard = document.querySelector(`[data-paper-id="${paperId}"]`);
-
             if (!paperCard) return;
             
             // First, check if we're on the detail page by looking for the dedicated tags container
@@ -877,15 +889,22 @@
                 const paperIdDiv = paperCard.querySelector('.paper-id');
                 if (!paperIdDiv) return;
                 
-                tagsContainer = paperIdDiv.querySelector('.tags-container');
+                // Look for the right-side container with tags and add button
+                let rightContainer = paperIdDiv.querySelector('div:last-child');
+                if (!rightContainer) return;
+                
+                tagsContainer = rightContainer.querySelector('.tags-container');
                 if (!tagsContainer) {
-                    const arxivLink = paperIdDiv.querySelector('a');
-                    if (!arxivLink) return;
-                    
+                    // Create tags container and insert it before the add-tag-dropdown
                     tagsContainer = document.createElement('span');
                     tagsContainer.className = 'tags-container';
-                    tagsContainer.style.marginLeft = '15px';
-                    arxivLink.parentNode.insertBefore(tagsContainer, arxivLink.nextSibling);
+                    
+                    const addTagDropdown = rightContainer.querySelector('.add-tag-dropdown');
+                    if (addTagDropdown) {
+                        rightContainer.insertBefore(tagsContainer, addTagDropdown);
+                    } else {
+                        rightContainer.prepend(tagsContainer);
+                    }
                 }
             }
             
@@ -899,8 +918,8 @@
             
             // Create and add the new tag badge
             const tagBadge = document.createElement('span');
-            tagBadge.style.cssText = 'display: inline-block; padding: 0.35rem 0.625rem; background: #f3f4f6; color: #000000; border: 1px solid #000000; font-size: 0.8125rem; margin-right: 0.25rem;';
-            tagBadge.textContent = `🏷️ ${tagName}`;
+            tagBadge.className = 'tag-badge';
+            tagBadge.textContent = `${tagName}`;
             tagBadge.dataset.tagName = tagName;
             tagsContainer.appendChild(tagBadge);
         }

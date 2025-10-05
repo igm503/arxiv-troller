@@ -15,57 +15,61 @@
         {% endwith %}
     </div>
     
-    <div class="paper-id">
-        <a href="https://arxiv.org/abs/{{ item.paper.arxiv_id }}" target="_blank">
-            {{ item.paper.arxiv_id }}
-        </a>
-        {% if item.tags %}
-        <span class="tags-container" style="margin-left: 15px;">
-            {% for tag_name in item.tags %}
-                <span style="display: inline-block; padding: 2px 8px; background: #e0e0e0; color: #666; border-radius: 3px; font-size: 0.85rem; margin-right: 4px;" data-tag-name="{{ tag_name }}">
-                    🏷️ {{ tag_name }}
-                </span>
-            {% endfor %}
-        </span>
-        {% endif %}
-        {% if user.is_authenticated %}
-        <span style="margin-left: 10px;">
-            {% if current_tag %}
-                <div class="add-tag-dropdown" style="display: inline-block;">
-                    <div class="add-tag-main">
-                        <button onclick="addToCurrentTag({{ item.paper.id }}, event)">+ Add Tag</button>
-                        <button class="dropdown-toggle" onclick="toggleTagDropdown(event, {{ item.paper.id }})">▼</button>
-                    </div>
-                    <div class="tag-dropdown-menu" id="dropdown-{{ item.paper.id }}">
-                        {% for tag in user_tags %}
-                        <div class="tag-dropdown-item" onclick="addToTag({{ item.paper.id }}, {{ tag.id }}, '{{ tag.name|escapejs }}')">
-                            {{ tag.name }}
-                        </div>
-                        {% endfor %}
-                        <div class="tag-dropdown-new" onclick="addToNewTag({{ item.paper.id }})">
-                            + Create New Tag
-                        </div>
-                    </div>
-                </div>
-            {% else %}
-                <div class="add-tag-dropdown" style="display: inline-block;">
-                    <button class="action-btn" onclick="toggleTagDropdown(event, {{ item.paper.id }})">
-                        + Add Tag ▼
-                    </button>
-                    <div class="tag-dropdown-menu" id="dropdown-{{ item.paper.id }}">
-                        {% for tag in user_tags %}
-                        <div class="tag-dropdown-item" onclick="addToTag({{ item.paper.id }}, {{ tag.id }}, '{{ tag.name|escapejs }}')">
-                            {{ tag.name }}
-                        </div>
-                        {% endfor %}
-                        <div class="tag-dropdown-new" onclick="addToNewTag({{ item.paper.id }})">
-                            + Create New Tag
-                        </div>
-                    </div>
-                </div>
+    <div class="paper-id" style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <a href="https://arxiv.org/abs/{{ item.paper.arxiv_id }}" target="_blank">
+                arXiv:{{ item.paper.arxiv_id }}
+            </a>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            {% if item.tags %}
+            <span class="tags-container">
+                {% for tag_name in item.tags %}
+                    <span class="tag-badge" data-tag-name="{{ tag_name }}">
+                        {{ tag_name }}
+                    </span>
+                {% endfor %}
+            </span>
             {% endif %}
-        </span>
-        {% endif %}
+            {% if user.is_authenticated %}
+                {% if current_tag %}
+                    <div class="add-tag-dropdown" style="display: inline-block;">
+                        <div class="add-tag-main">
+                            <button onclick="addToCurrentTag({{ item.paper.id }}, event)">Add Tag</button>
+                            <button class="dropdown-toggle" onclick="toggleTagDropdown(event, {{ item.paper.id }})">
+                                <span style="font-size: 0.5rem;">▼</span>
+                            </button>
+                        </div>
+                        <div class="tag-dropdown-menu" id="dropdown-{{ item.paper.id }}">
+                            {% for tag in user_tags %}
+                            <div class="tag-dropdown-item" onclick="addToTag({{ item.paper.id }}, {{ tag.id }}, '{{ tag.name|escapejs }}')">
+                                {{ tag.name }}
+                            </div>
+                            {% endfor %}
+                            <div class="tag-dropdown-new" onclick="addToNewTag({{ item.paper.id }})">
+                                + Create New Tag
+                            </div>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="add-tag-dropdown" style="display: inline-block;">
+                        <button class="action-btn" onclick="toggleTagDropdown(event, {{ item.paper.id }})">
+                            Add Tag <span style="font-size: 0.5rem;">▼</span>
+                        </button>
+                        <div class="tag-dropdown-menu" id="dropdown-{{ item.paper.id }}">
+                            {% for tag in user_tags %}
+                            <div class="tag-dropdown-item" onclick="addToTag({{ item.paper.id }}, {{ tag.id }}, '{{ tag.name|escapejs }}')">
+                                {{ tag.name }}
+                            </div>
+                            {% endfor %}
+                            <div class="tag-dropdown-new" onclick="addToNewTag({{ item.paper.id }})">
+                                + Create New Tag
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+            {% endif %}
+        </div>
     </div>
     
     <div class="abstract-drawer" id="abstract-{{ item.paper.id }}">
