@@ -4,15 +4,16 @@ from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
-from django.db.models import Q
-from .models import Tag, TaggedPaper, RemovedPaper, Paper
+from .models import Tag, TaggedPaper, Paper
 
 
 def login_view(request):
     if request.method == "POST":
         email = request.POST.get("email", "").lower().strip()
         if email:
-            user, created = User.objects.get_or_create(username=email, defaults={"email": email})
+            user, created = User.objects.get_or_create(
+                username=email, defaults={"email": email}
+            )
             user.backend = "django.contrib.auth.backends.ModelBackend"
             auth_login(request, user)
             return redirect("papers:search")
@@ -64,33 +65,6 @@ def remove_from_tag(request):
 
 @login_required
 @require_POST
-def remove_from_search(request):
-    """Mark paper as removed from search results"""
-    paper_id = request.POST.get("paper_id")
-    tag_id = request.POST.get("tag_id")
-
-    tag = get_object_or_404(Tag, id=tag_id, user=request.user)
-    paper = get_object_or_404(Paper, id=paper_id)
-    RemovedPaper.objects.get_or_create(tag=tag, paper=paper)
-
-    return JsonResponse({"success": True})
-
-
-@login_required
-@require_POST
-def unremove_from_search(request):
-    """Unremove papers from the removal list"""
-    tag_id = request.POST.get("tag_id")
-    paper_ids = request.POST.getlist("paper_ids[]")
-
-    tag = get_object_or_404(Tag, id=tag_id, user=request.user)
-    RemovedPaper.objects.filter(tag=tag, paper_id__in=paper_ids).delete()
-
-    return JsonResponse({"success": True})
-
-
-@login_required
-@require_POST
 def rename_tag(request):
     """Rename a tag"""
     tag_id = request.POST.get("tag_id")
@@ -107,27 +81,13 @@ def rename_tag(request):
 
 
 @login_required
-def tag_settings(request, tag_id):
-    """Tag settings page"""
-    tag = get_object_or_404(Tag, id=tag_id, user=request.user)
-    tagged_papers = TaggedPaper.objects.filter(tag=tag).select_related("paper")
-    removed_papers = RemovedPaper.objects.filter(tag=tag).select_related("paper")
-
-    return render(
-        request,
-        "papers/tag_settings.html",
-        {"tag": tag, "tagged_papers": tagged_papers, "removed_papers": removed_papers},
-    )
-
-
-@login_required
 def get_tag_drawer(request):
     """AJAX endpoint to get tag drawer HTML for switching tags"""
     tag_id = request.GET.get("tag_id")
     if not tag_id:
         return JsonResponse({"error": "Missing tag_id"}, status=400)
     tag = get_object_or_404(Tag, id=tag_id, user=request.user)
-    
+
     # Get tagged papers
     sort = request.GET.get("sort", "time")
     tagged_papers = TaggedPaper.objects.filter(tag=tag).select_related("paper")
@@ -135,7 +95,7 @@ def get_tag_drawer(request):
         tagged_papers = tagged_papers.order_by("paper__title")
     else:
         tagged_papers = tagged_papers.order_by("-added_at")
-    
+
     # Build HTML for papers list
     papers_html = ""
     if tagged_papers.exists():
@@ -143,7 +103,7 @@ def get_tag_drawer(request):
             title_truncated = tagged.paper.title[:60]
             if len(tagged.paper.title) > 60:
                 title_truncated += "..."
-            
+
             papers_html += f"""
             <div style="padding: 5px; border-bottom: 1px solid #cccc; font-size: 0.9rem; cursor: pointer; position: relative;" 
                  onclick="searchSinglePaper({tagged.paper.id})" 
@@ -172,7 +132,7 @@ def get_tag_drawer(request):
             """
     else:
         papers_html = '<p style="padding: 15px; color: #999; text-align: center;">No papers tagged yet</p>'
-    
+
     return JsonResponse(
         {
             "success": True,

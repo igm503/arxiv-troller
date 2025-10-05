@@ -41,8 +41,12 @@ class PaperAuthor(models.Model):
 
 
 class Citation(models.Model):
-    citing_paper = models.ForeignKey(Paper, on_delete=models.CASCADE, related_name="references")
-    cited_paper = models.ForeignKey(Paper, on_delete=models.CASCADE, related_name="citations")
+    citing_paper = models.ForeignKey(
+        Paper, on_delete=models.CASCADE, related_name="references"
+    )
+    cited_paper = models.ForeignKey(
+        Paper, on_delete=models.CASCADE, related_name="citations"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -87,12 +91,3 @@ class TaggedPaper(models.Model):
     class Meta:
         unique_together = ("tag", "paper")
         ordering = ["-added_at"]
-
-
-class RemovedPaper(models.Model):
-    tag = models.ForeignKey(Tag, on_delete=models.CASCADE, related_name="removed_papers")
-    paper = models.ForeignKey(Paper, on_delete=models.CASCADE)  # No quotes needed
-    removed_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ("tag", "paper")

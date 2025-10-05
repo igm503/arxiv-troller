@@ -9,7 +9,7 @@ from django.utils import timezone
 from pgvector.django import L2Distance
 from django.db import connection
 
-from .models import Paper, Embedding, Tag, TaggedPaper, RemovedPaper
+from .models import Paper, Embedding, Tag, TaggedPaper
 
 RESULTS_PER_PAGE = 40
 MAX_RESULTS = 400
@@ -110,7 +110,7 @@ def search(request):
             "tagged_papers"
         )
 
-    current_tag_id = (query_params.get("tag"))
+    current_tag_id = query_params.get("tag")
     if current_tag_id is not None and request.user.is_authenticated:
         context["current_tag"] = get_object_or_404(
             Tag, id=current_tag_id, user=request.user
@@ -165,7 +165,7 @@ def search(request):
 
     if is_ajax:
         html = render_to_string(
-            "papers/_paper_card.html",
+            "papers/paper_card.html",
             {
                 "results": results,
                 "user_tags": context["user_tags"],
@@ -188,7 +188,7 @@ def search(request):
     context["all_categories"] = all_categories
     context["show_filters"] = search_context is not None
 
-    return render(request, "papers/unified.html", context)
+    return render(request, "papers/search.html", context)
 
 
 def keyword_search(context):
@@ -343,10 +343,6 @@ def get_valid_papers(context, current_paper=None):
     excluded_ids = context.get("exclude_ids", set())
 
     if tag is not None:
-        removed_papers = set(
-            RemovedPaper.objects.filter(tag=tag).values_list("paper_id", flat=True)
-        )
-        excluded_ids.update(removed_papers)
         tagged_papers = TaggedPaper.objects.filter(tag=tag).select_related("paper")
         tagged_paper_ids = set(tagged_papers.values_list("paper_id", flat=True))
         excluded_ids.update(tagged_paper_ids)
