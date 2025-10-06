@@ -9,5 +9,7 @@ UI
 - export tags
 - search custom date range
 - search in progress indicator
+- LaTeX rendering in search page for titles and abstracts
+- LaTeX rendering for titles in detail page
 
 

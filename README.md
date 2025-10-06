@@ -1,5 +1,7 @@
 # ArXiv Paper Discovery & Management
 
+![Alt text](assets/search.png?raw=true "Arxiv Troller Search")
+
 A web application for discovering, organizing, and tracking machine learning papers from arXiv. Built as a successor to [arxiv-sanity-lite](https://github.com/karpathy/arxiv-sanity-lite) with semantic search capabilities and personal paper management. Another way to think of it is as a simpler, less-featured [Zeta Alpha](https://www.zeta-alpha.com/) tool.
 
 ## Overview
