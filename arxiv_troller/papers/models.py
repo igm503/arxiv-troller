@@ -7,7 +7,16 @@ from pgvector.django import HalfVectorField
 class Author(models.Model):
     keyname = models.CharField(max_length=200)
     forenames = models.CharField(max_length=200, null=True, blank=True)
-
+    
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['keyname', 'forenames'],
+                name='papers_author_keyname_forenames_unique',
+                nulls_distinct=False
+            )
+        ]
+    
     def __str__(self):
         if self.forenames:
             return f"{self.forenames} {self.keyname}"
