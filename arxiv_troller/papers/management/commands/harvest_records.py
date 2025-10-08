@@ -34,7 +34,6 @@ class Command(BaseCommand):
             most_recent = Paper.objects.aggregate(Max("updated"))["updated__max"]
             last_date = most_recent.replace(tzinfo=None)
             last_date_str = last_date.strftime("%Y-%m-%d")
-            last_date_str = "2025-09-12"
             url = f"{base_url}&metadataPrefix=arXiv&from={last_date_str}"
 
         with tqdm(total=3_000_000) as pbar:

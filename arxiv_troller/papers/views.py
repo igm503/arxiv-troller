@@ -1,6 +1,7 @@
 import json
 import re
 from datetime import timedelta
+import random
 
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
@@ -66,6 +67,8 @@ def get_date_cutoff(date_filter):
 
     now = timezone.now()
     date_cutoffs = {
+        "1day": now - timedelta(days=1),
+        "3day": now - timedelta(days=3),
         "1week": now - timedelta(days=7),
         "1month": now - timedelta(days=30),
         "3months": now - timedelta(days=90),
@@ -249,6 +252,8 @@ def tag_search(context):
     if not tagged_papers:
         return [], search_context
 
+    random.shuffle(tagged_papers)
+
     valid_paper_query = get_valid_papers(context)
 
     # Calculate papers per source - need enough to cover offset + page + 1
@@ -256,18 +261,29 @@ def tag_search(context):
     res_per_source = max(1, total_needed // max(1, len(tagged_papers))) + 1
 
     results = []
+    seen_papers = set()
+    count = 0
     for paper in tagged_papers:
         similars = get_similar_embeddings(paper, valid_paper_query, res_per_source)
+        new_similars = []
 
-        if similars:
-            results.append(similars)
+        for similar in similars:
+            if similar.id not in seen_papers:
+                new_similars.append(similar)
+                seen_papers.add(similar.id)
+                count += 1
 
-    seen_papers = set()
+        if new_similars:
+            results.append(new_similars)
+
+        if count >= total_needed:
+            print("breaking")
+            break
+
     papers = []
     for i in range(res_per_source):
         for result_group in results:
-            if len(result_group) > i and result_group[i].id not in seen_papers:
-                seen_papers.add(result_group[i].id)
+            if len(result_group) > i:
                 papers.append(result_group[i])
 
     return papers, search_context
@@ -364,9 +380,6 @@ def get_valid_papers(context, current_paper=None):
 
 def get_similar_embeddings(paper, valid_paper_query, num_results):
     valid_paper_ids = valid_paper_query.values_list("id", flat=True)
-    print(f"[DEBUG] valid_paper_ids count: {len(list(valid_paper_ids))}")
-    print(f"[DEBUG] Looking for papers similar to: {paper.id}")
-    print(f"[DEBUG] Requesting {num_results} results")
 
     embedding = Embedding.objects.filter(
         paper=paper,
@@ -374,7 +387,6 @@ def get_similar_embeddings(paper, valid_paper_query, num_results):
         embedding_type="abstract",
     ).first()
     if not embedding:
-        print(f"[DEBUG] No embedding found for paper {paper.id}")
         return []
 
     similar_embeddings = list(
@@ -389,5 +401,4 @@ def get_similar_embeddings(paper, valid_paper_query, num_results):
         .order_by("distance")[:num_results]
     )
 
-    print(f"[DEBUG] Found {len(similar_embeddings)} similar papers")
     return [emb.paper for emb in similar_embeddings]

@@ -54,7 +54,9 @@
           <button type="button" onclick="toggleFilterDropdown(event, 'date-filter')" 
                   style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; background: #e8eaed; color: #000000; border: 1px solid #000000; padding: 0.5rem 0.75rem; border-radius: 0; cursor: pointer; font-size: 0.875rem; font-family: 'Inter', sans-serif; font-weight: 500;">
             <span id="date-filter-selected">
-              {% if date_filter == '1week' %}Last Week
+              {% if date_filter == '1day' %}Last Day
+              {% elif date_filter == '3day' %}Last 3 Days
+              {% elif date_filter == '1week' %}Last Week
               {% elif date_filter == '1month' %}Last Month
               {% elif date_filter == '3months' %}Last 3 Months
               {% elif date_filter == '6months' %}Last 6 Months
@@ -65,6 +67,8 @@
           </button>
           <div class="tag-dropdown-menu" id="dropdown-date-filter" style="width: 100%;">
             <div class="tag-dropdown-item" onclick="setFilter('date_filter', 'all', 'All Time')">All Time</div>
+            <div class="tag-dropdown-item" onclick="setFilter('date_filter', '1day', 'Last Day')">Last Day</div>
+            <div class="tag-dropdown-item" onclick="setFilter('date_filter', '3day', 'Last 3 Days')">Last 3 Days</div>
             <div class="tag-dropdown-item" onclick="setFilter('date_filter', '1week', 'Last Week')">Last Week</div>
             <div class="tag-dropdown-item" onclick="setFilter('date_filter', '1month', 'Last Month')">Last Month</div>
             <div class="tag-dropdown-item" onclick="setFilter('date_filter', '3months', 'Last 3 Months')">Last 3 Months</div>
