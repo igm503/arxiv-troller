@@ -14,7 +14,7 @@
         flex-shrink: 0;
         gap: 8px;
       ">
-      <h3 style="
+      <h3 id="tag-name-display" style="
           margin: 0;
           font-size: 1.1rem;
           color: #2c3e50;
@@ -25,6 +25,19 @@
         ">
         {% if current_tag %}{{ current_tag.name }}{% endif %}
       </h3>
+      <input type="text" id="tag-name-input" value="{% if current_tag %}{{ current_tag.name }}{% endif %}" style="
+          display: none;
+          margin: 0;
+          font-size: 1.1rem;
+          color: #2c3e50;
+          min-width: 0;
+          flex: 1;
+          padding: 0.5rem;
+          border: 1px solid #000000;
+          background: #e8eaed;
+          font-family: 'Inter', sans-serif;
+          font-weight: 600;
+        ">
       <div style="display: flex; gap: 8px; align-items: center; flex-shrink: 0;">
         <button onclick="toggleEditMode()" class="btn btn-small" id="edit-toggle-btn">
           Edit

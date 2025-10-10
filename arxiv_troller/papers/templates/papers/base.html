@@ -175,7 +175,6 @@
             border: 1px solid #000000;
             border-radius: 0;
             text-decoration: none;
-
             color: #ffffff;
             cursor: pointer;
             font-size: 0.875rem;
@@ -209,6 +208,7 @@
             overflow-y: auto;
             background: #f5f5f5;
             border-right: 1px solid #000000;
+            position: relative;
         }
         
         .container {
@@ -471,7 +471,7 @@
         
         .filter-group label {
             font-size: 0.75rem;
-            color: #000000
+            color: #000000;
             margin-bottom: 0.25rem;
             text-transform: uppercase;
             letter-spacing: 0.05em;
@@ -567,6 +567,7 @@
             background: #e8eaed;
             font-weight: 600;
             color: #000000;
+            cursor: pointer;
         }
         
         .remove-btn {
@@ -583,13 +584,6 @@
         
         .remove-btn:hover {
             background: #a04040;
-        }size: 0.8125rem;
-            font-family: 'Inter', sans-serif;
-            font-weight: 500;
-        }
-        
-        .remove-btn:hover {
-            background: #333333;
         }
         
         .action-btn {
@@ -663,9 +657,81 @@
         </div>
     </div>
     
+    <!-- Delete Tag Confirmation Modal -->
+    <div id="delete-tag-modal" style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 2000;
+        justify-content: center;
+        align-items: center;
+      ">
+      <div style="
+          background: #f5f5f5;
+          border: 1px solid #000000;
+          padding: 2rem;
+          max-width: 400px;
+          width: 90%;
+        ">
+        <h3 style="margin-top: 0; margin-bottom: 1rem; font-size: 1.1rem;">
+          Delete Tag?
+        </h3>
+        <p style="margin-bottom: 1.5rem; color: #333;">
+          Are you sure you want to delete "<span id="delete-tag-name"></span>"? This will remove the tag but won't delete the papers themselves.
+        </p>
+        <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+          <button onclick="closeDeleteModal()" class="btn btn-secondary">
+            Cancel
+          </button>
+          <button onclick="confirmDeleteTag()" class="remove-btn" style="padding: 0.625rem 1.25rem;">
+            Delete Tag
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rename Error Modal -->
+    <div id="rename-error-modal" style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 2000;
+        justify-content: center;
+        align-items: center;
+      ">
+      <div style="
+          background: #f5f5f5;
+          border: 1px solid #000000;
+          padding: 2rem;
+          max-width: 400px;
+          width: 90%;
+        ">
+        <h3 style="margin-top: 0; margin-bottom: 1rem; font-size: 1.1rem;">
+          Cannot Rename Tag
+        </h3>
+        <p id="rename-error-message" style="margin-bottom: 1.5rem; color: #333;">
+        </p>
+        <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+          <button onclick="closeRenameErrorModal()" class="btn">
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+    
     <script>
         // Global variables
         let currentTagId = {{ current_tag.id|default:"null" }};
+        let editModeActive = false;
+        let originalTagName = '';
         
         // Tag context functions
         function closeTagContext() {
@@ -698,6 +764,18 @@
             // Update global tag ID
             currentTagId = tagId;
             
+            // Reset edit mode if active
+            if (editModeActive) {
+                editModeActive = false;
+                const editBtn = document.getElementById('edit-toggle-btn');
+                const deleteBtn = document.getElementById('delete-tag-btn');
+                if (editBtn) editBtn.textContent = 'Edit';
+                if (deleteBtn) deleteBtn.style.display = 'none';
+                document.querySelectorAll('.drawer-remove-btn').forEach(btn => {
+                    btn.style.display = 'none';
+                });
+            }
+            
             // Update all paper detail links on the page to use the new tag
             document.querySelectorAll('.paper-title a').forEach(link => {
                 const url = new URL(link.href);
@@ -717,10 +795,16 @@
                             drawer.style.display = '';
                         }
                         
-                        // Update drawer header
-                        const drawerHeader = document.querySelector('.tag-drawer-wrapper h3');
+                        // Update drawer header - both display and input
+                        const drawerHeader = document.getElementById('tag-name-display');
+                        const drawerInput = document.getElementById('tag-name-input');
                         if (drawerHeader) {
                             drawerHeader.textContent = data.tag_name;
+                            drawerHeader.style.display = 'block';
+                        }
+                        if (drawerInput) {
+                            drawerInput.value = data.tag_name;
+                            drawerInput.style.display = 'none';
                         }
                         
                         // Update drawer papers list
@@ -768,6 +852,14 @@
                                     if (drawerContent) {
                                         drawerContent.innerHTML = data.papers_html;
                                     }
+                                    
+                                    // Re-apply edit mode visibility to newly loaded content
+                                    if (editModeActive) {
+                                        const removeButtons = document.querySelectorAll('.drawer-remove-btn');
+                                        removeButtons.forEach(btn => {
+                                            btn.style.display = 'block';
+                                        });
+                                    }
                                 }
                             })
                             .catch(error => console.error('Error updating drawer:', error));
@@ -775,7 +867,6 @@
                 }
             })
             .catch(error => console.error('Error removing from tag:', error));
-            toggleEditMode();
         }
         
         function addToCurrentTag(paperId, event) {
@@ -844,7 +935,7 @@
                     
                     addTagBadgeToPaper(paperId, tagName);
                 }
-            });
+});
         }
         
         function addToNewTag(paperId) {
@@ -979,13 +1070,13 @@
           window.location.href = `{% url 'papers:search' %}?${params.toString()}`;
         }
 
-        let editModeActive = false;
-
         function toggleEditMode() {
           editModeActive = !editModeActive;
           const removeButtons = document.querySelectorAll('.drawer-remove-btn');
           const editBtn = document.getElementById('edit-toggle-btn');
           const deleteBtn = document.getElementById('delete-tag-btn');
+          const tagDisplay = document.getElementById('tag-name-display');
+          const tagInput = document.getElementById('tag-name-input');
           
           removeButtons.forEach(btn => {
             btn.style.display = editModeActive ? 'block' : 'none';
@@ -995,46 +1086,72 @@
             deleteBtn.style.display = editModeActive ? 'inline-block' : 'none';
           }
           
-          editBtn.textContent = editModeActive ? 'Done' : 'Edit';
-        }
-
-        function removeFromTag(paperId) {
-          fetch("{% url 'papers:remove_from_tag' %}", {
-            method: 'POST',
-            headers: {
-              'X-CSRFToken': '{{ csrf_token }}',
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `paper_id=${paperId}&tag_id=${currentTagId}`
-          }).then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              removeTagBadgeFromPaper(paperId, data.tag_name);
-              
-              if (currentTagId) {
-                fetch(`{% url 'papers:get_tag_drawer' %}?tag_id=${currentTagId}`)
-                  .then(response => response.json())
-                  .then(data => {
-                    if (data.success) {
-                      const drawerContent = document.getElementById('drawer-papers-list');
-                      if (drawerContent) {
-                        drawerContent.innerHTML = data.papers_html;
-                      }
-                      
-                      // Re-apply edit mode visibility to newly loaded content
-                      if (editModeActive) {
-                        const removeButtons = document.querySelectorAll('.drawer-remove-btn');
-                        removeButtons.forEach(btn => {
-                          btn.style.display = 'block';
-                        });
-                      }
-                    }
-                  })
-                  .catch(error => console.error('Error updating drawer:', error));
-              }
+          if (editModeActive) {
+            // Entering edit mode
+            editBtn.textContent = 'Done';
+            originalTagName = tagDisplay.textContent.trim();
+            tagDisplay.style.display = 'none';
+            tagInput.style.display = 'block';
+            tagInput.focus();
+            tagInput.select();
+          } else {
+            // Exiting edit mode
+            editBtn.textContent = 'Edit';
+            const newTagName = tagInput.value.trim();
+            
+            // Check if tag name was changed and is not empty
+            if (newTagName && newTagName !== originalTagName) {
+              // Rename the tag
+              fetch("{% url 'papers:rename_tag' %}", {
+                method: 'POST',
+                headers: {
+                  'X-CSRFToken': '{{ csrf_token }}',
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `tag_id=${currentTagId}&new_name=${encodeURIComponent(newTagName)}`
+              })
+              .then(response => response.json())
+              .then(data => {
+                if (data.success) {
+                  tagDisplay.textContent = data.new_name;
+                  tagInput.value = data.new_name;
+                  originalTagName = data.new_name;
+                  
+                  // Update the tag button in the header
+                  const tagButton = document.querySelector(`.tag-button.active`);
+                  if (tagButton) {
+                    const count = tagButton.textContent.match(/\((\d+)\)/);
+                    tagButton.childNodes[0].textContent = `${data.new_name} ${count ? count[0] : ''}`;
+                  }
+                  
+                  tagDisplay.style.display = 'block';
+                  tagInput.style.display = 'none';
+                } else {
+                  // Show error in styled modal
+                  showRenameError(data.error || 'Unknown error');
+                  // Stay in edit mode
+                  editModeActive = true;
+                  editBtn.textContent = 'Done';
+                }
+              })
+              .catch(error => {
+                console.error('Error renaming tag:', error);
+                showRenameError('Error renaming tag');
+                // Stay in edit mode
+                editModeActive = true;
+                editBtn.textContent = 'Done';
+              });
+            } else if (!newTagName) {
+              // Empty name, revert
+              tagInput.value = originalTagName;
+              tagDisplay.style.display = 'block';
+              tagInput.style.display = 'none';
+            } else {
+              // No change
+              tagDisplay.style.display = 'block';
+              tagInput.style.display = 'none';
             }
-          })
-          .catch(error => console.error('Error removing from tag:', error));
+          }
         }
 
         function showDeleteTagButton() {
@@ -1087,11 +1204,40 @@
           });
         }
 
+        function showRenameError(message) {
+          const modal = document.getElementById('rename-error-modal');
+          const messageEl = document.getElementById('rename-error-message');
+          messageEl.textContent = message;
+          modal.style.display = 'flex';
+        }
+
+        function closeRenameErrorModal() {
+          const modal = document.getElementById('rename-error-modal');
+          modal.style.display = 'none';
+        }
+
         // Close modal when clicking outside of it
         document.addEventListener('click', function(event) {
-          const modal = document.getElementById('delete-tag-modal');
-          if (modal && event.target === modal) {
+          const deleteModal = document.getElementById('delete-tag-modal');
+          if (deleteModal && event.target === deleteModal) {
             closeDeleteModal();
+          }
+          
+          const renameModal = document.getElementById('rename-error-modal');
+          if (renameModal && event.target === renameModal) {
+            closeRenameErrorModal();
+          }
+        });
+
+        // Add support for pressing Enter to save while editing tag name
+        document.addEventListener('DOMContentLoaded', function() {
+          const tagInput = document.getElementById('tag-name-input');
+          if (tagInput) {
+            tagInput.addEventListener('keypress', function(e) {
+              if (e.key === 'Enter') {
+                toggleEditMode(); // This will save and exit edit mode
+              }
+            });
           }
         });
     </script>

@@ -65,6 +65,8 @@ def remove_from_tag(request):
 
 @login_required
 @require_POST
+@login_required
+@require_POST
 def rename_tag(request):
     """Rename a tag"""
     tag_id = request.POST.get("tag_id")
@@ -74,6 +76,11 @@ def rename_tag(request):
         return JsonResponse({"error": "Name cannot be empty"}, status=400)
 
     tag = get_object_or_404(Tag, id=tag_id, user=request.user)
+    
+    # Check if another tag with this name already exists for this user
+    if Tag.objects.filter(user=request.user, name=new_name).exclude(id=tag_id).exists():
+        return JsonResponse({"error": f"You already have a tag named '{new_name}'"}, status=400)
+    
     tag.name = new_name
     tag.save()
 
