@@ -3,13 +3,11 @@ DATA
 - get citation data
 
 UI
-- delete tags
-- rename tags
 - remove from tag search results
 - export tags
 - search custom date range
 - search in progress indicator
-- LaTeX rendering in search page for titles and abstracts
-- LaTeX rendering for titles in detail page
+- LaTeX rendering for titles in tag drawer
+- tag drawer sorting should persist between searches
 
 

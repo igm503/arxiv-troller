@@ -11,13 +11,13 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunSQL(
             sql=[
-                'CREATE EXTENSION IF NOT EXISTS pg_trgm;',
-                'CREATE INDEX papers_paper_title_trgm_idx ON papers_paper USING GIN (title gin_trgm_ops);',
+                "CREATE EXTENSION IF NOT EXISTS pg_trgm;",
+                "CREATE INDEX papers_paper_title_trgm_idx ON papers_paper USING GIN (title gin_trgm_ops);",
             ],
-            reverse_sql='DROP INDEX papers_paper_title_trgm_idx;',
+            reverse_sql="DROP INDEX papers_paper_title_trgm_idx;",
         ),
         migrations.RunSQL(
-            sql='CREATE INDEX papers_paper_categories_gin_idx ON papers_paper USING GIN(categories);',
-            reverse_sql='DROP INDEX papers_paper_categories_gin_idx;',
+            sql="CREATE INDEX papers_paper_categories_gin_idx ON papers_paper USING GIN(categories);",
+            reverse_sql="DROP INDEX papers_paper_categories_gin_idx;",
         ),
     ]
