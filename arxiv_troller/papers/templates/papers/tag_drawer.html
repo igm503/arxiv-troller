@@ -2,7 +2,6 @@
   <div style="
       display: flex;
       flex-direction: column;
-      height: 100%;
       position: relative;
     ">
     <div style="
@@ -13,11 +12,20 @@
         justify-content: space-between;
         align-items: center;
         flex-shrink: 0;
+        gap: 8px;
       ">
-      <h3 style="margin: 0; font-size: 1.1rem; color: #2c3e50">
+      <h3 style="
+          margin: 0;
+          font-size: 1.1rem;
+          color: #2c3e50;
+          overflow-wrap: break-word;
+          word-break: break-word;
+          min-width: 0;
+          flex: 1;
+        ">
         {% if current_tag %}{{ current_tag.name }}{% endif %}
       </h3>
-      <div style="display: flex; gap: 8px; align-items: center">
+      <div style="display: flex; gap: 8px; align-items: center; flex-shrink: 0;">
         <button onclick="toggleEditMode()" class="btn btn-small" id="edit-toggle-btn">
           Edit
         </button>
@@ -33,7 +41,7 @@
       </button>
       {% endif %}
     </div>
-    <div style="padding: 10px; overflow-y: auto; flex: 1;" id="drawer-papers-list">
+    <div style="padding: 10px; padding-bottom: 70px;" id="drawer-papers-list">
       {% for tagged in tagged_papers %}
       <div style="
           padding: 5px;
@@ -76,18 +84,23 @@
       </p>
       {% endfor %}
     </div>
-    <div style="
-        padding: 10px 15px;
-        border-top: 1px solid #000000;
-        background: #f8f9fa;
-        flex-shrink: 0;
-      ">
-      <button onclick="showDeleteTagButton()" class="remove-btn btn-small" id="delete-tag-btn" style="display: none; width: 100%;">
-        Delete Tag
-      </button>
-    </div>
+  </div>
+  <div style="
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 340px;
+      padding: 10px 15px;
+      border-top: 1px solid #000000;
+      background: #f8f9fa;
+      z-index: 10;
+    ">
+    <button onclick="showDeleteTagButton()" class="remove-btn btn-small" id="delete-tag-btn" style="display: none; width: 100%;">
+      Delete Tag
+    </button>
   </div>
 </div>
+
 <div id="delete-tag-modal" style="
     display: none;
     position: fixed;
