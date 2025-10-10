@@ -111,6 +111,23 @@
     <button onclick="showDeleteTagButton()" class="remove-btn btn-small" id="delete-tag-btn" style="display: none; width: 100%;">
       Delete Tag
     </button>
+    <div id="sort-dropdown-container" style="width: 100%;">
+      <div class="add-tag-dropdown" style="display: block; width: 100%;">
+        <button type="button" onclick="toggleSortDropdown(event)" 
+                style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; background: #e8eaed; color: #000000; border: 1px solid #000000; padding: 0.5rem 0.75rem; border-radius: 0; cursor: pointer; font-size: 0.875rem; font-family: 'Inter', sans-serif; font-weight: 500;">
+          <span id="sort-selected">
+            Sort: Added to Tag
+          </span>
+          <span style="font-size: 0.5rem;">▲</span>
+        </button>
+        <div class="tag-dropdown-menu" id="dropdown-sort-menu" style="width: 100%; bottom: 100%; top: auto; margin-bottom: 2px; margin-top: 0;">
+          <div class="tag-dropdown-item" onclick="setSortOrder('added')">Added to Tag</div>
+          <div class="tag-dropdown-item" onclick="setSortOrder('alpha')">Alphabetical</div>
+          <div class="tag-dropdown-item" onclick="setSortOrder('submitted')">Submitted Date</div>
+          <div class="tag-dropdown-item" onclick="setSortOrder('updated')">Updated Date</div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 

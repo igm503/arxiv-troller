@@ -1075,6 +1075,7 @@
           const removeButtons = document.querySelectorAll('.drawer-remove-btn');
           const editBtn = document.getElementById('edit-toggle-btn');
           const deleteBtn = document.getElementById('delete-tag-btn');
+          const sortContainer = document.getElementById('sort-dropdown-container');
           const tagDisplay = document.getElementById('tag-name-display');
           const tagInput = document.getElementById('tag-name-input');
           
@@ -1084,6 +1085,10 @@
           
           if (deleteBtn) {
             deleteBtn.style.display = editModeActive ? 'inline-block' : 'none';
+          }
+          
+          if (sortContainer) {
+            sortContainer.style.display = editModeActive ? 'none' : 'block';
           }
           
           if (editModeActive) {
@@ -1132,6 +1137,7 @@
                   // Stay in edit mode
                   editModeActive = true;
                   editBtn.textContent = 'Done';
+                  if (sortContainer) sortContainer.style.display = 'none';
                 }
               })
               .catch(error => {
@@ -1140,6 +1146,7 @@
                 // Stay in edit mode
                 editModeActive = true;
                 editBtn.textContent = 'Done';
+                if (sortContainer) sortContainer.style.display = 'none';
               });
             } else if (!newTagName) {
               // Empty name, revert
@@ -1240,6 +1247,58 @@
             });
           }
         });
+
+        function toggleSortDropdown(event) {
+          event.stopPropagation();
+          const dropdown = document.getElementById('dropdown-sort-menu');
+          
+          document.querySelectorAll('.tag-dropdown-menu').forEach(d => {
+            if (d.id !== 'dropdown-sort-menu') {
+              d.classList.remove('show');
+            }
+          });
+          
+          dropdown.classList.toggle('show');
+        }
+
+        function setSortOrder(sortType) {
+          if (!currentTagId) return;
+          
+          const sortSelected = document.getElementById('sort-selected');
+          const sortLabels = {
+            'added': 'Added to Tag',
+            'alpha': 'Alphabetical',
+            'submitted': 'Submitted Date',
+            'updated': 'Updated Date'
+          };
+          
+          sortSelected.textContent = 'Sort: ' + sortLabels[sortType];
+          
+          // Close dropdown
+          const dropdown = document.getElementById('dropdown-sort-menu');
+          dropdown.classList.remove('show');
+          
+          // Fetch sorted papers
+          fetch(`{% url 'papers:get_tag_drawer' %}?tag_id=${currentTagId}&sort=${sortType}`)
+            .then(response => response.json())
+            .then(data => {
+              if (data.success) {
+                const drawerContent = document.getElementById('drawer-papers-list');
+                if (drawerContent) {
+                  drawerContent.innerHTML = data.papers_html;
+                }
+                
+                // Re-apply edit mode visibility if active
+                if (editModeActive) {
+                  const removeButtons = document.querySelectorAll('.drawer-remove-btn');
+                  removeButtons.forEach(btn => {
+                    btn.style.display = 'block';
+                  });
+                }
+              }
+            })
+            .catch(error => console.error('Error sorting papers:', error));
+        }
     </script>
 </body>
 </html>
