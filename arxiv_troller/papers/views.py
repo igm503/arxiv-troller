@@ -29,6 +29,11 @@ def process_latex_commands(text):
     text = re.sub(
         r"\\href\{([^}]+)\}\{([^}]+)\}", r'<a href="\1" target="_blank">\2</a>', text
     )
+    text = re.sub(
+        r'(?<!href=")(?<!">)(https?://[^\s<>"]+?)(\.)?(?=\s|$)',
+        lambda m: f'<a href="{m.group(1)}" target="_blank">{m.group(1)}</a>{m.group(2) if m.group(2) else ""}',
+        text,
+    )
 
     # Special characters and escapes
     text = re.sub(r"\\%", "%", text)
@@ -163,7 +168,13 @@ def search(request):
             paper_tags[tp.paper_id].append(tp.tag.name)
 
     results = [
-        {"paper": paper, "tags": paper_tags.get(paper.id, [])} for paper in papers
+        {
+            "paper": paper,
+            "tags": paper_tags.get(paper.id, []),
+            "processed_title": process_latex_commands(paper.title),
+            "processed_abstract": process_latex_commands(paper.abstract),
+        }
+        for paper in papers
     ]
 
     if is_ajax:

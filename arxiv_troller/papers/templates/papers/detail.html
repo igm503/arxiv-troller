@@ -3,18 +3,6 @@
 
 {% block content %}
 
-<script>
-  window.MathJax = {
-    tex: {
-      inlineMath: [['$', '$'], ['\\(', '\\)']],
-      displayMath: [['$$', '$$'], ['\\[', '\\]']],
-    },
-  };
-</script>
-<script type="text/javascript" id="MathJax-script" async
-  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js">
-</script>
-
 <div class="paper-card" data-paper-id="{{ paper.id }}">
     <h1 class="paper-title">{{ paper.title }}</h1>
     

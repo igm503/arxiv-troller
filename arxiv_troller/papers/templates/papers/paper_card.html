@@ -1,7 +1,7 @@
 {% for item in results %}
 <div class="paper-card" data-paper-id="{{ item.paper.id }}">
     <div class="paper-title">
-        <a href="{% url 'papers:detail' item.paper.id %}{% if current_tag %}?tag={{ current_tag.id }}{% endif %}">{{ item.paper.title }}</a>
+        <a href="{% url 'papers:detail' item.paper.id %}{% if current_tag %}?tag={{ current_tag.id }}{% endif %}">{{ item.processed_title|safe }}</a>
     </div>
     
     <div class="paper-authors">
@@ -86,7 +86,7 @@
             {% endif %}
         </div>
         <div style="line-height: 1.6;">
-            {{ item.paper.abstract }}
+            {{ item.processed_abstract|safe }}
         </div>
     </div>
 </div>
