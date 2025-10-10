@@ -204,7 +204,7 @@ def get_tag_drawer(request):
                  onclick="searchSinglePaper({tagged.paper.id})" 
                  class="drawer-paper-card">
                 <div style="font-weight: 600; color: #2c3e50; margin-bottom: 4px; font-size: 0.95rem;">
-                    <a href="/papers/paper/{tagged.paper.id}/?tag={tag.id}" 
+                    <a href="/paper/{tagged.paper.id}/?tag={tag.id}" 
                        onclick="event.stopPropagation()"
                        style="color: inherit; text-decoration: none;">
                         {title_truncated}
