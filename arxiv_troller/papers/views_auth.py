@@ -141,3 +141,21 @@ def get_tag_drawer(request):
             "papers_html": papers_html,
         }
     )
+
+
+@login_required
+@require_POST
+def delete_tag(request):
+    """Delete a tag and all its associations"""
+    tag_id = request.POST.get("tag_id")
+
+    if not tag_id:
+        return JsonResponse({"error": "Missing tag_id"}, status=400)
+
+    tag = get_object_or_404(Tag, id=tag_id, user=request.user)
+    tag_name = tag.name
+
+    # Django will automatically delete associated TaggedPaper entries due to CASCADE
+    tag.delete()
+
+    return JsonResponse({"success": True, "deleted_tag_name": tag_name})

@@ -985,13 +985,115 @@
           editModeActive = !editModeActive;
           const removeButtons = document.querySelectorAll('.drawer-remove-btn');
           const editBtn = document.getElementById('edit-toggle-btn');
+          const deleteBtn = document.getElementById('delete-tag-btn');
           
           removeButtons.forEach(btn => {
             btn.style.display = editModeActive ? 'block' : 'none';
           });
           
+          if (deleteBtn) {
+            deleteBtn.style.display = editModeActive ? 'inline-block' : 'none';
+          }
+          
           editBtn.textContent = editModeActive ? 'Done' : 'Edit';
         }
+
+        function removeFromTag(paperId) {
+          fetch("{% url 'papers:remove_from_tag' %}", {
+            method: 'POST',
+            headers: {
+              'X-CSRFToken': '{{ csrf_token }}',
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `paper_id=${paperId}&tag_id=${currentTagId}`
+          }).then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              removeTagBadgeFromPaper(paperId, data.tag_name);
+              
+              if (currentTagId) {
+                fetch(`{% url 'papers:get_tag_drawer' %}?tag_id=${currentTagId}`)
+                  .then(response => response.json())
+                  .then(data => {
+                    if (data.success) {
+                      const drawerContent = document.getElementById('drawer-papers-list');
+                      if (drawerContent) {
+                        drawerContent.innerHTML = data.papers_html;
+                      }
+                      
+                      // Re-apply edit mode visibility to newly loaded content
+                      if (editModeActive) {
+                        const removeButtons = document.querySelectorAll('.drawer-remove-btn');
+                        removeButtons.forEach(btn => {
+                          btn.style.display = 'block';
+                        });
+                      }
+                    }
+                  })
+                  .catch(error => console.error('Error updating drawer:', error));
+              }
+            }
+          })
+          .catch(error => console.error('Error removing from tag:', error));
+        }
+
+        function showDeleteTagButton() {
+          if (!currentTagId) return;
+          
+          const modal = document.getElementById('delete-tag-modal');
+          const tagNameSpan = document.getElementById('delete-tag-name');
+          const tagButton = document.querySelector(`.tag-button.active`);
+          
+          if (tagButton && tagNameSpan) {
+            // Extract tag name from button text (remove the count in parentheses)
+            const fullText = tagButton.textContent.trim();
+            const tagName = fullText.replace(/\s*\(\d+\)\s*$/, '').trim();
+            tagNameSpan.textContent = tagName;
+          }
+          
+          modal.style.display = 'flex';
+        }
+
+        function closeDeleteModal() {
+          const modal = document.getElementById('delete-tag-modal');
+          modal.style.display = 'none';
+        }
+
+        function confirmDeleteTag() {
+          if (!currentTagId) return;
+          
+          fetch("{% url 'papers:delete_tag' %}", {
+            method: 'POST',
+            headers: {
+              'X-CSRFToken': '{{ csrf_token }}',
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `tag_id=${currentTagId}`
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              // Redirect to search page without tag parameter
+              window.location.href = '{% url "papers:search" %}';
+            } else {
+              alert('Error deleting tag: ' + (data.error || 'Unknown error'));
+              closeDeleteModal();
+            }
+          })
+          .catch(error => {
+            console.error('Error deleting tag:', error);
+            alert('Error deleting tag');
+            closeDeleteModal();
+          });
+        }
+
+        // Close modal when clicking outside of it
+        document.addEventListener('click', function(event) {
+          const modal = document.getElementById('delete-tag-modal');
+          if (modal && event.target === modal) {
+            closeDeleteModal();
+          }
+        });
     </script>
 </body>
 </html>
