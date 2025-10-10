@@ -392,20 +392,12 @@ def get_valid_papers(context, current_paper=None):
 def get_similar_embeddings(paper, valid_paper_query, num_results):
     valid_paper_ids = valid_paper_query.values_list("id", flat=True)
 
-    embedding = Embedding.objects.filter(
-        paper=paper,
-        model_name="gemini-embedding-001",
-        embedding_type="abstract",
-    ).first()
+    embedding = Embedding.objects.filter(paper=paper).first()
     if not embedding:
         return []
 
     similar_embeddings = list(
-        Embedding.objects.filter(
-            model_name="gemini-embedding-001",
-            embedding_type="abstract",
-            paper_id__in=valid_paper_ids,
-        )
+        Embedding.objects.filter(paper_id__in=valid_paper_ids)
         .annotate(distance=L2Distance("vector", embedding.vector))
         .select_related("paper")
         .prefetch_related("paper__authors")
