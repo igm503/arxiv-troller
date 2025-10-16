@@ -7,4 +7,3 @@ UI
 - export tags
 - search custom date range
 - search in progress indicator
-- tag drawer sorting should persist between searches

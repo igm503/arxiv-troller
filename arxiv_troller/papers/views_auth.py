@@ -130,19 +130,21 @@ def get_tag_drawer(request):
     # Build HTML for papers list
     papers_html = ""
     if tagged_papers.exists():
+        # Get sort parameter from request
+        sort_param = request.GET.get('sort', 'added')
+        
         for tagged in tagged_papers:
             # Process LaTeX in title
             processed_title = process_latex_commands(tagged.paper.title)
             title_truncated = processed_title[:60]
             if len(processed_title) > 60:
                 title_truncated += "..."
-
             papers_html += f"""
             <div style="padding: 5px; border-bottom: 1px solid #cccc; font-size: 0.9rem; cursor: pointer; position: relative;" 
                  onclick="searchSinglePaper({tagged.paper.id})" 
                  class="drawer-paper-card">
                 <div style="font-weight: 600; color: #2c3e50; margin-bottom: 4px; font-size: 0.95rem;">
-                    <a href="/paper/{tagged.paper.id}/?tag={tag.id}" 
+                    <a href="/paper/{tagged.paper.id}/?tag={tag.id}&sort={sort_param}" 
                        onclick="event.stopPropagation()"
                        style="color: inherit; text-decoration: none;">
                         {title_truncated}

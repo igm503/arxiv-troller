@@ -69,9 +69,9 @@
             margin-bottom: 4px;
             font-size: 0.95rem;
           ">
-          <a href="{% url 'papers:detail' tagged.paper.id %}?tag={{ current_tag.id }}" onclick="event.stopPropagation()"
+          <a href="{% url 'papers:detail' tagged.paper.id %}?tag={{ current_tag.id }}{% if request.GET.sort %}&sort={{ request.GET.sort }}{% endif %}" onclick="event.stopPropagation()"
             style="color: inherit; text-decoration: none">
-            {{ tagged.paper.title|truncatechars:60 }}
+            {{ tagged.processed_title|truncatechars:60 }}
           </a>
         </div>
         <div style="
@@ -166,3 +166,21 @@
     </div>
   </div>
 </div>
+
+<script>
+// Initialize sort dropdown display based on current URL parameter
+document.addEventListener('DOMContentLoaded', function() {
+    const params = new URLSearchParams(window.location.search);
+    const currentSort = params.get('sort') || 'added';
+    const sortSelected = document.getElementById('sort-selected');
+    const sortLabels = {
+        'added': 'Added to Tag',
+        'alpha': 'Alphabetical',
+        'submitted': 'Submitted Date',
+        'updated': 'Updated Date'
+    };
+    if (sortSelected) {
+        sortSelected.textContent = 'Sort: ' + sortLabels[currentSort];
+    }
+});
+</script>
