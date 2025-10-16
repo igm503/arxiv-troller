@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}arXiv Paper Search{% endblock %}</title>
+    <title>{% block title %}arXiv Troller{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -626,7 +626,7 @@
     </script>
     <header>
         <div class="header-top">
-            <h1><a href="{% url 'papers:search' %}">arXiv Paper Search</a></h1>
+            <h1><a href="{% url 'papers:search' %}">arXiv Troller</a></h1>
             
             <div class="user-controls">
                 {% if user.is_authenticated %}

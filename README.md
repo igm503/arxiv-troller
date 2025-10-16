@@ -1,4 +1,4 @@
-# ArXiv Paper Discovery & Management
+# [ArXiv Troler](https://arxiv-troller.com/)
 
 ![Alt text](assets/search.png?raw=true "Arxiv Troller Search")
 
@@ -56,6 +56,20 @@ When you search for papers similar to a single paper, the system:
 5. Returns the closest matches ordered by semantic similarity
 
 When searching based on a tag collection, the system queries for similar papers from each tagged paper independently, then interleaves the results. This prevents one paper from dominating recommendations. 
+
+## Local Installation
+
+```bash
+git clone https://github.com/igm503/arxiv-troller.git
+cd arxiv-troller
+# optional: create a virtual environment
+# conda
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py harvest_records
+python manage.py add_embeddings
+python manage.py add_citations
+```
 
 ## Technical Stack
 
