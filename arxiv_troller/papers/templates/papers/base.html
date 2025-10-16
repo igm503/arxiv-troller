@@ -743,7 +743,7 @@
         let currentTagId = {{ current_tag.id|default:"null" }};
         let editModeActive = false;
         let originalTagName = '';
-        
+
         // Tag context functions
         function closeTagContext() {
             const drawer = document.querySelector('.tag-drawer-wrapper');
@@ -753,10 +753,10 @@
             
             const params = new URLSearchParams(window.location.search);
             params.delete('tag');
-            const newUrl = params.toString() ? `{% url 'papers:search' %}?${params.toString()}` : '{% url 'papers:search' %}';
+            const newUrl = params.toString() ? '{% url 'papers:search' %}?${params.toString()}' : '{% url 'papers:search' %}';
             window.location.href = newUrl;
         }
-        
+
         function switchTag(tagId, event) {
             // Update URL without reload
             const params = new URLSearchParams(window.location.search);
@@ -822,6 +822,11 @@
                         const drawerContent = document.getElementById('drawer-papers-list');
                         if (drawerContent) {
                             drawerContent.innerHTML = data.papers_html;
+                            
+                            // Tell MathJax to re-render the new content
+                            if (window.MathJax && window.MathJax.typesetPromise) {
+                                MathJax.typesetPromise([drawerContent]).catch((err) => console.log('MathJax error:', err));
+                            }
                         }
                         
                         // Update search all button - show if there are papers
@@ -839,7 +844,7 @@
                 })
                 .catch(error => console.error('Error switching tag:', error));
         }
-        
+
         // Tag management functions
         function removeFromTag(paperId) {
             fetch("{% url 'papers:remove_from_tag' %}", {
@@ -862,6 +867,11 @@
                                     const drawerContent = document.getElementById('drawer-papers-list');
                                     if (drawerContent) {
                                         drawerContent.innerHTML = data.papers_html;
+                                        
+                                        // Tell MathJax to re-render the new content
+                                        if (window.MathJax && window.MathJax.typesetPromise) {
+                                            MathJax.typesetPromise([drawerContent]).catch((err) => console.log('MathJax error:', err));
+                                        }
                                     }
                                     
                                     // Re-apply edit mode visibility to newly loaded content
@@ -879,7 +889,7 @@
             })
             .catch(error => console.error('Error removing from tag:', error));
         }
-        
+
         function addToCurrentTag(paperId, event) {
             if (event) event.stopPropagation();
             
@@ -904,6 +914,11 @@
                                     const drawerContent = document.getElementById('drawer-papers-list');
                                     if (drawerContent) {
                                         drawerContent.innerHTML = data.papers_html;
+                                        
+                                        // Tell MathJax to re-render the new content
+                                        if (window.MathJax && window.MathJax.typesetPromise) {
+                                            MathJax.typesetPromise([drawerContent]).catch((err) => console.log('MathJax error:', err));
+                                        }
                                     }
                                 }
                             })
@@ -915,7 +930,7 @@
             })
             .catch(error => console.error('Error adding to tag:', error));
         }
-        
+
         function addToTag(paperId, tagId, tagName) {
             fetch("{% url 'papers:add_to_tag' %}", {
                 method: 'POST',
@@ -938,6 +953,11 @@
                                     const drawerContent = document.getElementById('drawer-papers-list');
                                     if (drawerContent) {
                                         drawerContent.innerHTML = data.papers_html;
+                                        
+                                        // Tell MathJax to re-render the new content
+                                        if (window.MathJax && window.MathJax.typesetPromise) {
+                                            MathJax.typesetPromise([drawerContent]).catch((err) => console.log('MathJax error:', err));
+                                        }
                                     }
                                 }
                             })
@@ -946,9 +966,9 @@
                     
                     addTagBadgeToPaper(paperId, tagName);
                 }
-});
+            });
         }
-        
+
         function addToNewTag(paperId) {
             const tagName = prompt("Enter new tag name:");
             if (!tagName || !tagName.trim()) return;
@@ -967,7 +987,7 @@
                 }
             });
         }
-        
+
         function toggleTagDropdown(event, paperId) {
             event.stopPropagation();
             const dropdown = document.getElementById(`dropdown-${paperId}`);
@@ -980,7 +1000,7 @@
             
             dropdown.classList.toggle('show');
         }
-        
+
         function addTagBadgeToPaper(paperId, tagName) {
             const paperCard = document.querySelector(`[data-paper-id="${paperId}"]`);
             if (!paperCard) return;
@@ -1027,7 +1047,7 @@
             tagBadge.dataset.tagName = tagName;
             tagsContainer.appendChild(tagBadge);
         }
-        
+
         function removeTagBadgeFromPaper(paperId, tagName) {
             const paperCard = document.querySelector(`[data-paper-id="${paperId}"]`);
             if (!paperCard) return;
@@ -1049,7 +1069,7 @@
                 tagsContainer.remove();
             }
         }
-        
+
         // Close dropdowns when clicking outside
         document.addEventListener('click', function(event) {
             if (!event.target.closest('.add-tag-dropdown')) {
@@ -1060,255 +1080,260 @@
         });
 
         function searchAllTagPapers() {
-          const params = new URLSearchParams(window.location.search);
-          params.set('search_all', '1');
-          params.delete('single_paper');
-          params.delete('q');
-          if (!params.has('date_filter')) {
-            params.set('date_filter', '1week');
-          }
-          window.location.href = `{% url 'papers:search' %}?${params.toString()}`;
+            const params = new URLSearchParams(window.location.search);
+            params.set('search_all', '1');
+            params.delete('single_paper');
+            params.delete('q');
+            if (!params.has('date_filter')) {
+                params.set('date_filter', '1week');
+            }
+            window.location.href = `{% url 'papers:search' %}?${params.toString()}`;
         }
 
         function searchSinglePaper(paperId) {
-          const params = new URLSearchParams(window.location.search);
-          params.set('single_paper', paperId);
-          params.delete('search_all');
-          params.delete('q');
-          if (!params.has('date_filter')) {
-            params.set('date_filter', '1week');
-          }
-          window.location.href = `{% url 'papers:search' %}?${params.toString()}`;
+            const params = new URLSearchParams(window.location.search);
+            params.set('single_paper', paperId);
+            params.delete('search_all');
+            params.delete('q');
+            if (!params.has('date_filter')) {
+                params.set('date_filter', '1week');
+            }
+            window.location.href = `{% url 'papers:search' %}?${params.toString()}`;
         }
 
         function toggleEditMode() {
-          editModeActive = !editModeActive;
-          const removeButtons = document.querySelectorAll('.drawer-remove-btn');
-          const editBtn = document.getElementById('edit-toggle-btn');
-          const deleteBtn = document.getElementById('delete-tag-btn');
-          const sortContainer = document.getElementById('sort-dropdown-container');
-          const tagDisplay = document.getElementById('tag-name-display');
-          const tagInput = document.getElementById('tag-name-input');
-          
-          removeButtons.forEach(btn => {
-            btn.style.display = editModeActive ? 'block' : 'none';
-          });
-          
-          if (deleteBtn) {
-            deleteBtn.style.display = editModeActive ? 'inline-block' : 'none';
-          }
-          
-          if (sortContainer) {
-            sortContainer.style.display = editModeActive ? 'none' : 'block';
-          }
-          
-          if (editModeActive) {
-            // Entering edit mode
-            editBtn.textContent = 'Done';
-            originalTagName = tagDisplay.textContent.trim();
-            tagDisplay.style.display = 'none';
-            tagInput.style.display = 'block';
-            tagInput.focus();
-            tagInput.select();
-          } else {
-            // Exiting edit mode
-            editBtn.textContent = 'Edit';
-            const newTagName = tagInput.value.trim();
+            editModeActive = !editModeActive;
+            const removeButtons = document.querySelectorAll('.drawer-remove-btn');
+            const editBtn = document.getElementById('edit-toggle-btn');
+            const deleteBtn = document.getElementById('delete-tag-btn');
+            const sortContainer = document.getElementById('sort-dropdown-container');
+            const tagDisplay = document.getElementById('tag-name-display');
+            const tagInput = document.getElementById('tag-name-input');
             
-            // Check if tag name was changed and is not empty
-            if (newTagName && newTagName !== originalTagName) {
-              // Rename the tag
-              fetch("{% url 'papers:rename_tag' %}", {
-                method: 'POST',
-                headers: {
-                  'X-CSRFToken': '{{ csrf_token }}',
-                  'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `tag_id=${currentTagId}&new_name=${encodeURIComponent(newTagName)}`
-              })
-              .then(response => response.json())
-              .then(data => {
-                if (data.success) {
-                  tagDisplay.textContent = data.new_name;
-                  tagInput.value = data.new_name;
-                  originalTagName = data.new_name;
-                  
-                  // Update the tag button in the header
-                  const tagButton = document.querySelector(`.tag-button.active`);
-                  if (tagButton) {
-                    const count = tagButton.textContent.match(/\((\d+)\)/);
-                    tagButton.childNodes[0].textContent = `${data.new_name} ${count ? count[0] : ''}`;
-                  }
-                  
-                  tagDisplay.style.display = 'block';
-                  tagInput.style.display = 'none';
-                } else {
-                  // Show error in styled modal
-                  showRenameError(data.error || 'Unknown error');
-                  // Stay in edit mode
-                  editModeActive = true;
-                  editBtn.textContent = 'Done';
-                  if (sortContainer) sortContainer.style.display = 'none';
-                }
-              })
-              .catch(error => {
-                console.error('Error renaming tag:', error);
-                showRenameError('Error renaming tag');
-                // Stay in edit mode
-                editModeActive = true;
-                editBtn.textContent = 'Done';
-                if (sortContainer) sortContainer.style.display = 'none';
-              });
-            } else if (!newTagName) {
-              // Empty name, revert
-              tagInput.value = originalTagName;
-              tagDisplay.style.display = 'block';
-              tagInput.style.display = 'none';
-            } else {
-              // No change
-              tagDisplay.style.display = 'block';
-              tagInput.style.display = 'none';
+            removeButtons.forEach(btn => {
+                btn.style.display = editModeActive ? 'block' : 'none';
+            });
+            
+            if (deleteBtn) {
+                deleteBtn.style.display = editModeActive ? 'inline-block' : 'none';
             }
-          }
+            
+            if (sortContainer) {
+                sortContainer.style.display = editModeActive ? 'none' : 'block';
+            }
+            
+            if (editModeActive) {
+                // Entering edit mode
+                editBtn.textContent = 'Done';
+                originalTagName = tagDisplay.textContent.trim();
+                tagDisplay.style.display = 'none';
+                tagInput.style.display = 'block';
+                tagInput.focus();
+                tagInput.select();
+            } else {
+                // Exiting edit mode
+                editBtn.textContent = 'Edit';
+                const newTagName = tagInput.value.trim();
+                
+                // Check if tag name was changed and is not empty
+                if (newTagName && newTagName !== originalTagName) {
+                    // Rename the tag
+                    fetch("{% url 'papers:rename_tag' %}", {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': '{{ csrf_token }}',
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: `tag_id=${currentTagId}&new_name=${encodeURIComponent(newTagName)}`
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            tagDisplay.textContent = data.new_name;
+                            tagInput.value = data.new_name;
+                            originalTagName = data.new_name;
+                            
+                            // Update the tag button in the header
+                            const tagButton = document.querySelector(`.tag-button.active`);
+                            if (tagButton) {
+                                const count = tagButton.textContent.match(/\((\d+)\)/);
+                                tagButton.childNodes[0].textContent = `${data.new_name} ${count ? count[0] : ''}`;
+                            }
+                            
+                            tagDisplay.style.display = 'block';
+                            tagInput.style.display = 'none';
+                        } else {
+                            // Show error in styled modal
+                            showRenameError(data.error || 'Unknown error');
+                            // Stay in edit mode
+                            editModeActive = true;
+                            editBtn.textContent = 'Done';
+                            if (sortContainer) sortContainer.style.display = 'none';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error renaming tag:', error);
+                        showRenameError('Error renaming tag');
+                        // Stay in edit mode
+                        editModeActive = true;
+                        editBtn.textContent = 'Done';
+                        if (sortContainer) sortContainer.style.display = 'none';
+                    });
+                } else if (!newTagName) {
+                    // Empty name, revert
+                    tagInput.value = originalTagName;
+                    tagDisplay.style.display = 'block';
+                    tagInput.style.display = 'none';
+                } else {
+                    // No change
+                    tagDisplay.style.display = 'block';
+                    tagInput.style.display = 'none';
+                }
+            }
         }
 
         function showDeleteTagButton() {
-          if (!currentTagId) return;
-          
-          const modal = document.getElementById('delete-tag-modal');
-          const tagNameSpan = document.getElementById('delete-tag-name');
-          const tagButton = document.querySelector(`.tag-button.active`);
-          
-          if (tagButton && tagNameSpan) {
-            // Extract tag name from button text (remove the count in parentheses)
-            const fullText = tagButton.textContent.trim();
-            const tagName = fullText.replace(/\s*\(\d+\)\s*$/, '').trim();
-            tagNameSpan.textContent = tagName;
-          }
-          
-          modal.style.display = 'flex';
+            if (!currentTagId) return;
+            
+            const modal = document.getElementById('delete-tag-modal');
+            const tagNameSpan = document.getElementById('delete-tag-name');
+            const tagButton = document.querySelector(`.tag-button.active`);
+            
+            if (tagButton && tagNameSpan) {
+                // Extract tag name from button text (remove the count in parentheses)
+                const fullText = tagButton.textContent.trim();
+                const tagName = fullText.replace(/\s*\(\d+\)\s*$/, '').trim();
+                tagNameSpan.textContent = tagName;
+            }
+            
+            modal.style.display = 'flex';
         }
 
         function closeDeleteModal() {
-          const modal = document.getElementById('delete-tag-modal');
-          modal.style.display = 'none';
+            const modal = document.getElementById('delete-tag-modal');
+            modal.style.display = 'none';
         }
 
         function confirmDeleteTag() {
-          if (!currentTagId) return;
-          
-          fetch("{% url 'papers:delete_tag' %}", {
-            method: 'POST',
-            headers: {
-              'X-CSRFToken': '{{ csrf_token }}',
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `tag_id=${currentTagId}`
-          })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              // Redirect to search page without tag parameter
-              window.location.href = '{% url "papers:search" %}';
-            } else {
-              alert('Error deleting tag: ' + (data.error || 'Unknown error'));
-              closeDeleteModal();
-            }
-          })
-          .catch(error => {
-            console.error('Error deleting tag:', error);
-            alert('Error deleting tag');
-            closeDeleteModal();
-          });
+            if (!currentTagId) return;
+            
+            fetch("{% url 'papers:delete_tag' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `tag_id=${currentTagId}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Redirect to search page without tag parameter
+                    window.location.href = '{% url "papers:search" %}';
+                } else {
+                    alert('Error deleting tag: ' + (data.error || 'Unknown error'));
+                    closeDeleteModal();
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting tag:', error);
+                alert('Error deleting tag');
+                closeDeleteModal();
+            });
         }
 
         function showRenameError(message) {
-          const modal = document.getElementById('rename-error-modal');
-          const messageEl = document.getElementById('rename-error-message');
-          messageEl.textContent = message;
-          modal.style.display = 'flex';
+            const modal = document.getElementById('rename-error-modal');
+            const messageEl = document.getElementById('rename-error-message');
+            messageEl.textContent = message;
+            modal.style.display = 'flex';
         }
 
         function closeRenameErrorModal() {
-          const modal = document.getElementById('rename-error-modal');
-          modal.style.display = 'none';
+            const modal = document.getElementById('rename-error-modal');
+            modal.style.display = 'none';
         }
 
         // Close modal when clicking outside of it
         document.addEventListener('click', function(event) {
-          const deleteModal = document.getElementById('delete-tag-modal');
-          if (deleteModal && event.target === deleteModal) {
-            closeDeleteModal();
-          }
-          
-          const renameModal = document.getElementById('rename-error-modal');
-          if (renameModal && event.target === renameModal) {
-            closeRenameErrorModal();
-          }
+            const deleteModal = document.getElementById('delete-tag-modal');
+            if (deleteModal && event.target === deleteModal) {
+                closeDeleteModal();
+            }
+            
+            const renameModal = document.getElementById('rename-error-modal');
+            if (renameModal && event.target === renameModal) {
+                closeRenameErrorModal();
+            }
         });
 
         // Add support for pressing Enter to save while editing tag name
         document.addEventListener('DOMContentLoaded', function() {
-          const tagInput = document.getElementById('tag-name-input');
-          if (tagInput) {
-            tagInput.addEventListener('keypress', function(e) {
-              if (e.key === 'Enter') {
-                toggleEditMode(); // This will save and exit edit mode
-              }
-            });
-          }
+            const tagInput = document.getElementById('tag-name-input');
+            if (tagInput) {
+                tagInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        toggleEditMode(); // This will save and exit edit mode
+                    }
+                });
+            }
         });
 
         function toggleSortDropdown(event) {
-          event.stopPropagation();
-          const dropdown = document.getElementById('dropdown-sort-menu');
-          
-          document.querySelectorAll('.tag-dropdown-menu').forEach(d => {
-            if (d.id !== 'dropdown-sort-menu') {
-              d.classList.remove('show');
-            }
-          });
-          
-          dropdown.classList.toggle('show');
+            event.stopPropagation();
+            const dropdown = document.getElementById('dropdown-sort-menu');
+            
+            document.querySelectorAll('.tag-dropdown-menu').forEach(d => {
+                if (d.id !== 'dropdown-sort-menu') {
+                    d.classList.remove('show');
+                }
+            });
+            
+            dropdown.classList.toggle('show');
         }
 
         function setSortOrder(sortType) {
-          if (!currentTagId) return;
-          
-          const sortSelected = document.getElementById('sort-selected');
-          const sortLabels = {
-            'added': 'Added to Tag',
-            'alpha': 'Alphabetical',
-            'submitted': 'Submitted Date',
-            'updated': 'Updated Date'
-          };
-          
-          sortSelected.textContent = 'Sort: ' + sortLabels[sortType];
-          
-          // Close dropdown
-          const dropdown = document.getElementById('dropdown-sort-menu');
-          dropdown.classList.remove('show');
-          
-          // Fetch sorted papers
-          fetch(`{% url 'papers:get_tag_drawer' %}?tag_id=${currentTagId}&sort=${sortType}`)
-            .then(response => response.json())
-            .then(data => {
-              if (data.success) {
-                const drawerContent = document.getElementById('drawer-papers-list');
-                if (drawerContent) {
-                  drawerContent.innerHTML = data.papers_html;
-                }
-                
-                // Re-apply edit mode visibility if active
-                if (editModeActive) {
-                  const removeButtons = document.querySelectorAll('.drawer-remove-btn');
-                  removeButtons.forEach(btn => {
-                    btn.style.display = 'block';
-                  });
-                }
-              }
-            })
-            .catch(error => console.error('Error sorting papers:', error));
+            if (!currentTagId) return;
+            
+            const sortSelected = document.getElementById('sort-selected');
+            const sortLabels = {
+                'added': 'Added to Tag',
+                'alpha': 'Alphabetical',
+                'submitted': 'Submitted Date',
+                'updated': 'Updated Date'
+            };
+            
+            sortSelected.textContent = 'Sort: ' + sortLabels[sortType];
+            
+            // Close dropdown
+            const dropdown = document.getElementById('dropdown-sort-menu');
+            dropdown.classList.remove('show');
+            
+            // Fetch sorted papers
+            fetch(`{% url 'papers:get_tag_drawer' %}?tag_id=${currentTagId}&sort=${sortType}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const drawerContent = document.getElementById('drawer-papers-list');
+                        if (drawerContent) {
+                            drawerContent.innerHTML = data.papers_html;
+                            
+                            // Tell MathJax to re-render the new content
+                            if (window.MathJax && window.MathJax.typesetPromise) {
+                                MathJax.typesetPromise([drawerContent]).catch((err) => console.log('MathJax error:', err));
+                            }
+                        }
+                        
+                        // Re-apply edit mode visibility if active
+                        if (editModeActive) {
+                            const removeButtons = document.querySelectorAll('.drawer-remove-btn');
+                            removeButtons.forEach(btn => {
+                                btn.style.display = 'block';
+                            });
+                        }
+                    }
+                })
+                .catch(error => console.error('Error sorting papers:', error));
         }
     </script>
 </body>

@@ -125,15 +125,28 @@ def search(request):
         )
 
         if not is_ajax:  # Only need drawer for full page load
-            sort = request.GET.get("sort", "time")
+            sort = request.GET.get("sort", "added")
             tagged_papers = TaggedPaper.objects.filter(
                 tag=context["current_tag"]
             ).select_related("paper")
             if sort == "alpha":
                 tagged_papers = tagged_papers.order_by("paper__title")
-            else:
+            elif sort == "submitted":
+                tagged_papers = tagged_papers.order_by("-paper__created")
+            elif sort == "updated":
+                tagged_papers = tagged_papers.order_by("-paper__updated")
+            else:  # added (default)
                 tagged_papers = tagged_papers.order_by("-added_at")
-            context["tagged_papers"] = tagged_papers
+            
+            # Process LaTeX in titles for drawer
+            tagged_papers_processed = []
+            for tagged in tagged_papers:
+                tagged_papers_processed.append({
+                    'paper': tagged.paper,
+                    'processed_title': process_latex_commands(tagged.paper.title),
+                    'added_at': tagged.added_at,
+                })
+            context["tagged_papers"] = tagged_papers_processed
 
     if context["single_paper_id"]:
         papers, search_context = paper_search(context)
@@ -333,14 +346,26 @@ def paper_detail(request, paper_id):
             current_tag = Tag.objects.filter(id=tag_id, user=request.user).first()
             if current_tag:
                 # Get tagged papers for drawer
-                sort = request.GET.get("sort", "time")
-                tagged_papers = TaggedPaper.objects.filter(
+                sort = request.GET.get("sort", "added")
+                tagged_papers_qs = TaggedPaper.objects.filter(
                     tag=current_tag
                 ).select_related("paper")
                 if sort == "alpha":
-                    tagged_papers = tagged_papers.order_by("paper__title")
-                else:
-                    tagged_papers = tagged_papers.order_by("-added_at")
+                    tagged_papers_qs = tagged_papers_qs.order_by("paper__title")
+                elif sort == "submitted":
+                    tagged_papers_qs = tagged_papers_qs.order_by("-paper__created")
+                elif sort == "updated":
+                    tagged_papers_qs = tagged_papers_qs.order_by("-paper__updated")
+                else:  # added (default)
+                    tagged_papers_qs = tagged_papers_qs.order_by("-added_at")
+                
+                # Process LaTeX in titles for drawer
+                for tagged in tagged_papers_qs:
+                    tagged_papers.append({
+                        'paper': tagged.paper,
+                        'processed_title': process_latex_commands(tagged.paper.title),
+                        'added_at': tagged.added_at,
+                    })
 
         # Get tags for this specific paper
         paper_tag_objs = TaggedPaper.objects.filter(
