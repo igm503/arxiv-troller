@@ -527,6 +527,24 @@
         .add-tag-main .dropdown-toggle:hover {
             background: #6a7688;
         }
+
+        .action-btn {
+            background: #4a5568;
+            color: #ffffff;
+            border: 1px solid #000000;
+            padding: 0.25rem 0.625rem;
+            border-radius: 0;
+            cursor: pointer;
+            font-size: 0.875rem;
+            margin-left: 0.5rem;
+            font-family: 'Inter', sans-serif;
+            font-weight: 500;
+        }
+        
+        .action-btn:hover {
+            background: #5a6678;
+        }
+        
         
         .tag-dropdown-menu {
             display: none;
@@ -584,23 +602,6 @@
         
         .remove-btn:hover {
             background: #a04040;
-        }
-        
-        .action-btn {
-            background: #000000;
-            color: #ffffff;
-            border: 1px solid #000000;
-            padding: 0.5rem 0.875rem;
-            border-radius: 0;
-            cursor: pointer;
-            font-size: 0.875rem;
-            margin-left: 0.5rem;
-            font-family: 'Inter', sans-serif;
-            font-weight: 500;
-        }
-        
-        .action-btn:hover {
-            background: #333333;
         }
         
         .pagination {
@@ -751,10 +752,59 @@
                 drawer.style.display = 'none';
             }
             
+            // Update URL without reload (same as switchTag does)
             const params = new URLSearchParams(window.location.search);
             params.delete('tag');
-            const newUrl = params.toString() ? `{% url 'papers:search' %}?${params.toString()}` : '{% url 'papers:search' %}';
-            window.location.href = newUrl;
+            const newUrl = params.toString() ? window.location.pathname + '?' + params.toString() : window.location.pathname;
+            window.history.pushState({}, '', newUrl);
+            
+            // Update global tag ID
+            currentTagId = null;
+            
+            // Remove active styling from all tag buttons
+            document.querySelectorAll('.tag-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Update all add tag buttons to no-context style
+            updateAddTagButtons(null);
+        }
+        
+        // Function to update all add tag buttons based on current tag context
+        function updateAddTagButtons(tagId) {
+            const addTagContainers = document.querySelectorAll('.add-tag-dropdown');
+            
+            addTagContainers.forEach(container => {
+                const paperId = container.closest('.paper-card')?.dataset.paperId;
+                if (!paperId) return;
+                
+                // Get the dropdown menu (preserve it)
+                const dropdownMenu = container.querySelector('.tag-dropdown-menu');
+                if (!dropdownMenu) return;
+                
+                if (tagId) {
+                    // Tag context exists - use split button style
+                    container.innerHTML = `
+                        <div class="add-tag-main">
+                            <button onclick="addToCurrentTag(${paperId}, event)" style="padding: 0.625rem 0.75rem;">Add Tag</button>
+                            <button class="dropdown-toggle" onclick="toggleTagDropdown(event, ${paperId})" style="padding: 0.625rem 0.75rem;">
+                                <span style="font-size: 0.5rem;">▼</span>
+                            </button>
+                        </div>
+                    `;
+                    // Re-append the dropdown menu
+                    container.appendChild(dropdownMenu);
+                } else {
+                    // No tag context - use single button style
+                    container.innerHTML = `
+                        <button class="action-btn" onclick="toggleTagDropdown(event, ${paperId})" style="padding: 0.625rem 0.75rem;">
+                            Add Tag <span style="font-size: 0.5rem; padding-left: 0.75rem;"> ▼</span>
+                        </button>
+                    `;
+                    // Re-append the dropdown menu
+                    container.appendChild(dropdownMenu);
+                }
+            });
         }
         
         function switchTag(tagId, event) {
@@ -842,6 +892,9 @@
                                 searchAllContainer.innerHTML = '';
                             }
                         }
+                        
+                        // Update all add tag buttons to tag-context style
+                        updateAddTagButtons(tagId);
                     }
                 })
                 .catch(error => console.error('Error switching tag:', error));
@@ -945,6 +998,47 @@
                     location.reload();
                 }
             });
+        }
+
+        function addToCurrentTag(paperId, event) {
+            if (event) event.stopPropagation();
+            
+            fetch("{% url 'papers:add_to_tag' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `paper_id=${paperId}&tag_id=${currentTagId}`
+            }).then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const dropdown = document.getElementById(`dropdown-${paperId}`);
+                    if (dropdown) dropdown.classList.remove('show');
+                    
+                    if (currentTagId) {
+                        fetch(`{% url 'papers:get_tag_drawer' %}?tag_id=${currentTagId}`)
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success) {
+                                    const drawerContent = document.getElementById('drawer-papers-list');
+                                    if (drawerContent) {
+                                        drawerContent.innerHTML = data.papers_html;
+                                        
+                                        // Tell MathJax to re-render the new content
+                                        if (window.MathJax && window.MathJax.typesetPromise) {
+                                            MathJax.typesetPromise([drawerContent]).catch((err) => console.log('MathJax error:', err));
+                                        }
+                                    }
+                                }
+                            })
+                            .catch(error => console.error('Error updating drawer:', error));
+                    }
+                    
+                    addTagBadgeToPaper(paperId, data.tag_name);
+                }
+            })
+            .catch(error => console.error('Error adding to tag:', error));
         }
         
         function toggleTagDropdown(event, paperId) {

@@ -35,8 +35,8 @@
                 {% if current_tag %}
                     <div class="add-tag-dropdown" style="display: inline-block;">
                         <div class="add-tag-main">
-                            <button onclick="addToCurrentTag({{ item.paper.id }}, event)">Add Tag</button>
-                            <button class="dropdown-toggle" onclick="toggleTagDropdown(event, {{ item.paper.id }})">
+                            <button onclick="addToCurrentTag({{ item.paper.id }}, event)" style="padding: 0.625rem 0.75rem;">Add Tag</button>
+                            <button class="dropdown-toggle" onclick="toggleTagDropdown(event, {{ item.paper.id }})" style="padding: 0.625rem 0.75rem;">
                                 <span style="font-size: 0.5rem;">▼</span>
                             </button>
                         </div>
@@ -53,8 +53,8 @@
                     </div>
                 {% else %}
                     <div class="add-tag-dropdown" style="display: inline-block;">
-                        <button class="action-btn" onclick="toggleTagDropdown(event, {{ item.paper.id }})">
-                            Add Tag <span style="font-size: 0.5rem;">▼</span>
+                        <button class="action-btn" onclick="toggleTagDropdown(event, {{ item.paper.id }})" style="padding: 0.625rem 0.75rem;">
+                            Add Tag <span style="font-size: 0.5rem; padding-left: 0.75rem;"> ▼</span>
                         </button>
                         <div class="tag-dropdown-menu" id="dropdown-{{ item.paper.id }}">
                             {% for tag in user_tags %}
