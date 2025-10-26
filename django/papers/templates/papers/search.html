@@ -5,13 +5,37 @@
 <!-- Search bar always visible -->
 <div class="search-form">
   <form method="get" action="{% url 'papers:search' %}" id="search-form">
-    <input type="text" name="q" value="{{ query }}" placeholder="Search papers by title..." autofocus>
-    <button type="submit">Search</button>
-    {% if current_tag %}
-    <input type="hidden" name="tag" value="{{ current_tag.id }}">
-    {% endif %}
+    <div style="position: relative; display: flex; align-items: center; gap: 0.5rem;">
+      <input type="text" name="q" id="search-input" value="{{ query }}" placeholder="Search papers by title..." autofocus style="flex: 1;">
+      <button type="button" id="help-toggle" style="padding: 0.625rem; font-size: 1.2rem; background: #e8eaed; border: 1px solid #000000; cursor: pointer; line-height: 1;">?</button>
+      <button type="submit">Search</button>
+    </div>
   </form>
+  
+  <!-- Help dropdown -->
+  <div id="help-dropdown" style="display: {% if not results %}block{% else %}none{% endif %}; margin-top: 0.5rem; padding: 1rem; border: 1px solid #000000; background: #f8f9fa;">
+    <h4 style="margin-top: 0; margin-bottom: 0.75rem;">Search Syntax</h4>
+    <div style="line-height: 1.8;">
+      <p style="margin-bottom: 0.5rem;"><strong>Keyword search:</strong> Enter any text to search paper titles</p>
+      <p style="margin-bottom: 0.5rem; padding-left: 1rem; font-family: monospace; color: #666;">Example: neural networks</p>
+      
+      <p style="margin-bottom: 0.5rem; margin-top: 1rem;"><strong>Tag search:</strong> Search for papers similar to all papers in a tag</p>
+      <p style="margin-bottom: 0.5rem; padding-left: 1rem; font-family: monospace; color: #666;">Format: tag: &lt;tag_name&gt;</p>
+      <p style="margin-bottom: 0.5rem; padding-left: 1rem; font-family: monospace; color: #666;">Example: tag: favorites</p>
+      
+      <p style="margin-bottom: 0.5rem; margin-top: 1rem;"><strong>Similar paper search:</strong> Search for papers similar to a specific paper</p>
+      <p style="margin-bottom: 0.5rem; padding-left: 1rem; font-family: monospace; color: #666;">Format: paper: &lt;arxiv_id&gt;</p>
+      <p style="margin-bottom: 0; padding-left: 1rem; font-family: monospace; color: #666;">Example: paper: 2301.12345</p>
+    </div>
+  </div>
 </div>
+
+<!-- Error message -->
+{% if query_error %}
+<div class="paper-card" style="background: #ffe6e6; border-color: #ff0000;">
+  <p style="color: #cc0000; font-weight: 600;">{{ query_error }}</p>
+</div>
+{% endif %}
 
 <!-- Results area -->
 <div class="results-area">
@@ -22,7 +46,7 @@
     <h3>Keyword Search Results</h3>
     <p>Searching for: <strong>"{{ search_context.query }}"</strong></p>
     {% elif search_context.type == 'tag_all' %}
-    <h3>Similar Papers - All Papers in {{ current_tag.name }}</h3>
+    <h3>Similar Papers - Tag: {{ search_context.tag.name }}</h3>
     <p>Finding papers similar to all papers in this tag</p>
     {% elif search_context.type == 'single_paper' %}
     <h3>Similar Papers</h3>
@@ -66,14 +90,14 @@
             <span style="font-size: 0.5rem;">▼</span>
           </button>
           <div class="tag-dropdown-menu" id="dropdown-date-filter" style="width: 100%;">
-            <div class="tag-dropdown-item" onclick="setFilter('date_filter', 'all', 'All Time')">All Time</div>
-            <div class="tag-dropdown-item" onclick="setFilter('date_filter', '1day', 'Last Day')">Last Day</div>
-            <div class="tag-dropdown-item" onclick="setFilter('date_filter', '3day', 'Last 3 Days')">Last 3 Days</div>
-            <div class="tag-dropdown-item" onclick="setFilter('date_filter', '1week', 'Last Week')">Last Week</div>
-            <div class="tag-dropdown-item" onclick="setFilter('date_filter', '1month', 'Last Month')">Last Month</div>
-            <div class="tag-dropdown-item" onclick="setFilter('date_filter', '3months', 'Last 3 Months')">Last 3 Months</div>
-            <div class="tag-dropdown-item" onclick="setFilter('date_filter', '6months', 'Last 6 Months')">Last 6 Months</div>
-            <div class="tag-dropdown-item" onclick="setFilter('date_filter', '1year', 'Last Year')">Last Year</div>
+            <div class="tag-dropdown-item" onclick="setFilterValue('date_filter', 'all', 'All Time')">All Time</div>
+            <div class="tag-dropdown-item" onclick="setFilterValue('date_filter', '1day', 'Last Day')">Last Day</div>
+            <div class="tag-dropdown-item" onclick="setFilterValue('date_filter', '3day', 'Last 3 Days')">Last 3 Days</div>
+            <div class="tag-dropdown-item" onclick="setFilterValue('date_filter', '1week', 'Last Week')">Last Week</div>
+            <div class="tag-dropdown-item" onclick="setFilterValue('date_filter', '1month', 'Last Month')">Last Month</div>
+            <div class="tag-dropdown-item" onclick="setFilterValue('date_filter', '3months', 'Last 3 Months')">Last 3 Months</div>
+            <div class="tag-dropdown-item" onclick="setFilterValue('date_filter', '6months', 'Last 6 Months')">Last 6 Months</div>
+            <div class="tag-dropdown-item" onclick="setFilterValue('date_filter', '1year', 'Last Year')">Last Year</div>
           </div>
         </div>
       </div>
@@ -89,9 +113,9 @@
             <span style="font-size: 0.5rem;">▼</span>
           </button>
           <div class="tag-dropdown-menu" id="dropdown-category-filter" style="width: 100%;">
-            <div class="tag-dropdown-item" onclick="setFilter('category', '', 'All Categories')">All Categories</div>
+            <div class="tag-dropdown-item" onclick="setFilterValue('category', '', 'All Categories')">All Categories</div>
             {% for cat in all_categories %}
-            <div class="tag-dropdown-item" onclick="setFilter('category', '{{ cat }}', '{{ cat }}')">{{ cat }}</div>
+            <div class="tag-dropdown-item" onclick="setFilterValue('category', '{{ cat }}', '{{ cat }}')">{{ cat }}</div>
             {% endfor %}
           </div>
         </div>
@@ -121,6 +145,28 @@
 </div>
 
 <script>
+  // Store current filter values (not yet applied to search)
+  let pendingFilters = {
+    date_filter: '{{ date_filter }}',
+    category: '{{ category_filter }}'
+  };
+
+  // Track if user has manually interacted with help dropdown
+  let helpManuallyToggled = false;
+
+  // Help dropdown toggle
+  document.getElementById('help-toggle').addEventListener('click', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const helpDropdown = document.getElementById('help-dropdown');
+    if (helpDropdown.style.display === 'none') {
+      helpDropdown.style.display = 'block';
+    } else {
+      helpDropdown.style.display = 'none';
+    }
+    helpManuallyToggled = true;
+  });
+
   // Filter dropdown functions
   function toggleFilterDropdown(event, filterId) {
     event.stopPropagation();
@@ -135,15 +181,64 @@
     dropdown.classList.toggle('show');
   }
 
-  function setFilter(paramName, value, displayText) {
-    const params = new URLSearchParams(window.location.search);
-    if (value) {
-      params.set(paramName, value);
-    } else {
-      params.delete(paramName);
-    }
-    window.location.search = params.toString();
+  // Update filter value in memory and UI, but don't navigate
+  function setFilterValue(paramName, value, displayText) {
+    pendingFilters[paramName] = value;
+    
+    // Update the display
+    const displayId = paramName === 'date_filter' ? 'date-filter-selected' : 'category-filter-selected';
+    document.getElementById(displayId).textContent = displayText;
+    
+    // Close dropdown
+    document.querySelectorAll('.tag-dropdown-menu').forEach(d => {
+      d.classList.remove('show');
+    });
   }
+
+  // When search form is submitted, add pending filters to the URL and hide help if appropriate
+  document.getElementById('search-form').addEventListener('submit', function(e) {
+    // Hide help dropdown on search (will be shown again if no results on next page load)
+    document.getElementById('help-dropdown').style.display = 'none';
+    
+    const form = this;
+    const params = new URLSearchParams();
+    
+    // Add query if present
+    const query = document.getElementById('search-input').value;
+    if (query) {
+      params.set('q', query);
+    }
+    
+    // Preserve tag and sort from current URL if present (to keep drawer state)
+    const currentParams = new URLSearchParams(window.location.search);
+    const currentTag = currentParams.get('tag');
+    const currentSort = currentParams.get('sort');
+    console.log('Current URL:', window.location.search);
+    console.log('Current tag from URL:', currentTag);
+    console.log('Current sort from URL:', currentSort);
+    if (currentTag) {
+      params.set('tag', currentTag);
+      console.log('Setting tag in params:', currentTag);
+    }
+    if (currentSort) {
+      params.set('sort', currentSort);
+      console.log('Setting sort in params:', currentSort);
+    }
+    
+    // Add pending filters
+    if (pendingFilters.date_filter) {
+      params.set('date_filter', pendingFilters.date_filter);
+    }
+    if (pendingFilters.category) {
+      params.set('category', pendingFilters.category);
+    }
+    
+    // Navigate with all parameters
+    console.log('Final params:', params.toString());
+    console.log('Final URL:', form.action + '?' + params.toString());
+    e.preventDefault();
+    window.location.href = form.action + '?' + params.toString();
+  });
 
   // Extract abstract drawer logic into reusable function
   function attachAbstractDrawerListeners() {
@@ -231,6 +326,20 @@
         });
     });
   }
+
+  // On page load, check if we should auto-populate search from URL parameter
+  document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const populateSearch = urlParams.get('populate_search');
+    
+    if (populateSearch) {
+      document.getElementById('search-input').value = populateSearch;
+      // Remove the populate_search parameter from URL
+      urlParams.delete('populate_search');
+      const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+      window.history.replaceState({}, '', newUrl);
+    }
+  });
 </script>
 
 {% endblock %}

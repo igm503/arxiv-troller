@@ -49,7 +49,7 @@
     </div>
     <div style="padding: 10px 15px; border-bottom: 1px solid #bbbb; flex-shrink: 0;" id="drawer-search-all">
       {% if tagged_papers %}
-      <button class="btn" onclick="searchAllTagPapers()" style="width: 100%">
+      <button type="button" class="btn" onclick="populateSearchWithTag()" style="width: 100%">
         Search Similar Papers
       </button>
       {% endif %}
@@ -62,7 +62,7 @@
           font-size: 0.9rem;
           cursor: pointer;
           position: relative;
-        " onclick="searchSinglePaper({{ tagged.paper.id }})" class="drawer-paper-card">
+        " onclick="populateSearchWithPaper('{{ tagged.paper.arxiv_id }}')" class="drawer-paper-card">
         <div style="
             font-weight: 600;
             color: #2c3e50;
@@ -183,4 +183,40 @@ document.addEventListener('DOMContentLoaded', function() {
         sortSelected.textContent = 'Sort: ' + sortLabels[currentSort];
     }
 });
+
+// Function to populate search bar with paper similarity search
+function populateSearchWithPaper(arxivId) {
+    console.log('populateSearchWithPaper called with:', arxivId);
+    const searchInput = document.getElementById('search-input');
+    if (searchInput && arxivId) {
+        searchInput.value = 'paper: ' + arxivId;
+        console.log('Search input populated with:', searchInput.value);
+    } else {
+        console.error('Could not populate search:', {searchInput, arxivId});
+    }
+}
+
+// Function to populate search bar with tag similarity search
+function populateSearchWithTag() {
+    console.log('populateSearchWithTag called');
+    const tagName = document.getElementById('tag-name-display');
+    const searchInput = document.getElementById('search-input');
+    
+    if (!tagName) {
+        console.error('Could not find tag-name-display element');
+        return;
+    }
+    if (!searchInput) {
+        console.error('Could not find search-input element');
+        return;
+    }
+    
+    const tagNameText = tagName.textContent.trim();
+    console.log('Tag name:', tagNameText);
+    
+    if (searchInput && tagNameText) {
+        searchInput.value = 'tag: ' + tagNameText;
+        console.log('Search input populated with:', searchInput.value);
+    }
+}
 </script>

@@ -650,7 +650,7 @@
             <div class="tag-list">
                 <strong>Tags:</strong>
                 {% for tag in user_tags %}
-                    <button class="tag-button {% if current_tag and current_tag.id == tag.id %}active{% endif %}"
+                    <button type="button" class="tag-button {% if current_tag and current_tag.id == tag.id %}active{% endif %}"
                             onclick="switchTag({{ tag.id }}, event)">
                         {{ tag.name }} ({{ tag.tagged_papers.count }})
                     </button>
@@ -837,7 +837,7 @@
                             // Check if papers_html is not just the "No papers" message
                             const hasPapers = !data.papers_html.includes('No papers tagged yet');
                             if (hasPapers) {
-                                searchAllContainer.innerHTML = '<button class="btn" onclick="searchAllTagPapers()" style="width: 100%;">Search Similar Papers</button>';
+                                searchAllContainer.innerHTML = '<button type="button" class="btn" onclick="populateSearchWithTag()" style="width: 100%;">Search Similar Papers</button>';
                             } else {
                                 searchAllContainer.innerHTML = '';
                             }
@@ -1037,30 +1037,6 @@
                 });
             }
         });
-
-        function searchAllTagPapers() {
-            const params = new URLSearchParams(window.location.search);
-            params.set('search_all', '1');
-            params.delete('single_paper');
-            params.delete('q');
-            if (!params.has('date_filter')) {
-                params.set('date_filter', '1week');
-            }
-            // Preserve sort parameter (already in params from window.location.search)
-            window.location.href = `{% url 'papers:search' %}?${params.toString()}`;
-        }
-
-        function searchSinglePaper(paperId) {
-            const params = new URLSearchParams(window.location.search);
-            params.set('single_paper', paperId);
-            params.delete('search_all');
-            params.delete('q');
-            if (!params.has('date_filter')) {
-                params.set('date_filter', '1week');
-            }
-            // Preserve sort parameter (already in params from window.location.search)
-            window.location.href = `{% url 'papers:search' %}?${params.toString()}`;
-        }
 
         function toggleEditMode() {
             editModeActive = !editModeActive;

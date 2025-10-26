@@ -26,9 +26,7 @@ def process_latex_commands(text):
 
     # URLs and hrefs
     text = re.sub(r"\\url\{([^}]+)\}", r'<a href="\1" target="_blank">\1</a>', text)
-    text = re.sub(
-        r"\\href\{([^}]+)\}\{([^}]+)\}", r'<a href="\1" target="_blank">\2</a>', text
-    )
+    text = re.sub(r"\\href\{([^}]+)\}\{([^}]+)\}", r'<a href="\1" target="_blank">\2</a>', text)
     text = re.sub(
         r'(?<!href=")(?<!">)(https?://[^\s<>"]+?)(\.)?(?=\s|$)',
         lambda m: f'<a href="{m.group(1)}" target="_blank">{m.group(1)}</a>{m.group(2) if m.group(2) else ""}',
@@ -98,37 +96,75 @@ def search(request):
         query_params = request.GET
         exclude_ids = set()
 
+    # Parse query for special syntax: "tag: X" or "paper: X"
+    raw_query = query_params.get("q", "").strip()
+    parsed_single_paper_id = None
+    parsed_search_all_tag = None
+    parsed_tag_for_search = None  # Tag parsed from query - for SEARCH ONLY, not drawer
+    actual_query = raw_query
+    query_error = None
+
+    if raw_query:
+        # Check for "tag: X" pattern (exactly one space after colon)
+        tag_match = re.match(r"^tag:\s(.+)$", raw_query)
+        if tag_match:
+            tag_name = tag_match.group(1)
+            if request.user.is_authenticated:
+                try:
+                    parsed_tag_for_search = Tag.objects.get(user=request.user, name=tag_name)
+                    parsed_search_all_tag = "1"
+                    actual_query = ""
+                except Tag.DoesNotExist:
+                    query_error = f"Tag '{tag_name}' does not exist"
+            else:
+                query_error = "You must be logged in to search by tag"
+        else:
+            # Check for "paper: X" pattern (exactly one space after colon)
+            # Now accepts arXiv ID format (e.g., 2301.12345 or 2301.12345v2)
+            paper_match = re.match(r"^paper:\s(.+)$", raw_query)
+            if paper_match:
+                arxiv_id = paper_match.group(1).strip()
+                try:
+                    paper = Paper.objects.get(arxiv_id=arxiv_id)
+                    parsed_single_paper_id = str(paper.id)
+                    actual_query = ""
+                except Paper.DoesNotExist:
+                    query_error = f"Paper with arXiv ID '{arxiv_id}' does not exist"
+
     context = {
         "user_tags": [],
-        "current_tag": None,
-        "query": query_params.get("q", ""),
+        "current_tag": None,  # Will be set from URL only, not from query
+        "query": raw_query,
         "date_filter": query_params.get("date_filter", ""),
         "category_filter": query_params.get("category", ""),
-        "single_paper_id": query_params.get("single_paper"),
-        "search_all_tag": query_params.get("search_all"),
+        "single_paper_id": parsed_single_paper_id or query_params.get("single_paper"),
+        "search_all_tag": parsed_search_all_tag or query_params.get("search_all"),
         "exclude_ids": exclude_ids,
+        "query_error": query_error,
+        "parsed_tag_for_search": parsed_tag_for_search,  # Pass to context for search functions
     }
 
     with connection.cursor() as cursor:
-        cursor.execute("SET hnsw.ef_search = 200")
+        cursor.execute("SET hnsw.ef_search = 64")
         cursor.execute("SET hnsw.iterative_scan = 'strict_order'")
+        cursor.execute("SET hnsw.max_scan_tuples = 1000")
 
     if request.user.is_authenticated:
         context["user_tags"] = Tag.objects.filter(user=request.user).prefetch_related(
             "tagged_papers"
         )
 
+    # Set current_tag from URL parameter ONLY (for drawer state)
     current_tag_id = query_params.get("tag")
     if current_tag_id is not None and request.user.is_authenticated:
-        context["current_tag"] = get_object_or_404(
-            Tag, id=current_tag_id, user=request.user
-        )
+        context["current_tag"] = get_object_or_404(Tag, id=current_tag_id, user=request.user)
 
-        if not is_ajax:  # Only need drawer for full page load
+        # Load drawer content
+        if not is_ajax:
             sort = request.GET.get("sort", "added")
-            tagged_papers = TaggedPaper.objects.filter(
-                tag=context["current_tag"]
-            ).select_related("paper")
+            tagged_papers = TaggedPaper.objects.filter(tag=context["current_tag"]).select_related(
+                "paper"
+            )
             if sort == "alpha":
                 tagged_papers = tagged_papers.order_by("paper__title")
             elif sort == "submitted":
@@ -137,29 +173,32 @@ def search(request):
                 tagged_papers = tagged_papers.order_by("-paper__updated")
             else:  # added (default)
                 tagged_papers = tagged_papers.order_by("-added_at")
-            
+
             # Process LaTeX in titles for drawer
             tagged_papers_processed = []
             for tagged in tagged_papers:
-                tagged_papers_processed.append({
-                    'paper': tagged.paper,
-                    'processed_title': process_latex_commands(tagged.paper.title),
-                    'added_at': tagged.added_at,
-                })
+                tagged_papers_processed.append(
+                    {
+                        "paper": tagged.paper,
+                        "processed_title": process_latex_commands(tagged.paper.title),
+                        "added_at": tagged.added_at,
+                    }
+                )
             context["tagged_papers"] = tagged_papers_processed
 
-    if context["single_paper_id"]:
+    # If there's a query error, don't execute search
+    if query_error:
+        papers, search_context = [], None
+    elif context["single_paper_id"]:
         papers, search_context = paper_search(context)
-    elif context["search_all_tag"] and context["current_tag"]:
+    elif context["search_all_tag"] and context["parsed_tag_for_search"]:
         papers, search_context = tag_search(context)
-    elif context["query"]:
+    elif actual_query:
         papers, search_context = keyword_search(context)
     else:
         papers, search_context = [], None
 
-    has_more = bool(len(papers)) and (
-        len(context["exclude_ids"]) + RESULTS_PER_PAGE < MAX_RESULTS
-    )
+    has_more = bool(len(papers)) and (len(context["exclude_ids"]) + RESULTS_PER_PAGE < MAX_RESULTS)
 
     # Get all categories
     all_categories = set()
@@ -242,7 +281,18 @@ def keyword_search(context):
 def paper_search(context):
     """Execute similarity search for a single paper - returns (results, has_more, search_context, all_categories)"""
     paper_id = context["single_paper_id"]
-    paper = get_object_or_404(Paper, id=paper_id)
+
+    # Try to get paper - handle both internal ID and arXiv ID
+    try:
+        # First try as internal ID (integer)
+        paper = Paper.objects.get(id=int(paper_id))
+    except (ValueError, Paper.DoesNotExist):
+        # If that fails, try as arXiv ID
+        try:
+            paper = Paper.objects.get(arxiv_id=paper_id)
+        except Paper.DoesNotExist:
+            # If both fail, raise 404
+            paper = get_object_or_404(Paper, id=paper_id)
 
     if not context["date_filter"]:
         context["date_filter"] = "1week"
@@ -261,13 +311,14 @@ def paper_search(context):
 
 def tag_search(context):
     """Execute similarity search for all papers in a tag - returns (results, has_more, search_context, all_categories)"""
-    tag = context["current_tag"]
+    tag = context["parsed_tag_for_search"]  # Use the tag from query parsing, not drawer state
 
     if not context["date_filter"]:
         context["date_filter"] = "1week"
 
     search_context = {
         "type": "tag_all",
+        "tag": tag,  # Include tag in search context so template can show which tag was searched
     }
 
     tagged_papers = TaggedPaper.objects.filter(tag=tag).select_related("paper")
@@ -319,9 +370,7 @@ def paper_detail(request, paper_id):
 
     # Get authors in order
     authors = (
-        paper.authors.through.objects.filter(paper=paper)
-        .select_related("author")
-        .order_by("order")
+        paper.authors.through.objects.filter(paper=paper).select_related("author").order_by("order")
     )
 
     # Check if embedding exists
@@ -339,17 +388,15 @@ def paper_detail(request, paper_id):
     paper_tags = []
 
     if request.user.is_authenticated:
-        user_tags = Tag.objects.filter(user=request.user).prefetch_related(
-            "tagged_papers"
-        )
+        user_tags = Tag.objects.filter(user=request.user).prefetch_related("tagged_papers")
         if tag_id:
             current_tag = Tag.objects.filter(id=tag_id, user=request.user).first()
             if current_tag:
                 # Get tagged papers for drawer
                 sort = request.GET.get("sort", "added")
-                tagged_papers_qs = TaggedPaper.objects.filter(
-                    tag=current_tag
-                ).select_related("paper")
+                tagged_papers_qs = TaggedPaper.objects.filter(tag=current_tag).select_related(
+                    "paper"
+                )
                 if sort == "alpha":
                     tagged_papers_qs = tagged_papers_qs.order_by("paper__title")
                 elif sort == "submitted":
@@ -358,14 +405,16 @@ def paper_detail(request, paper_id):
                     tagged_papers_qs = tagged_papers_qs.order_by("-paper__updated")
                 else:  # added (default)
                     tagged_papers_qs = tagged_papers_qs.order_by("-added_at")
-                
+
                 # Process LaTeX in titles for drawer
                 for tagged in tagged_papers_qs:
-                    tagged_papers.append({
-                        'paper': tagged.paper,
-                        'processed_title': process_latex_commands(tagged.paper.title),
-                        'added_at': tagged.added_at,
-                    })
+                    tagged_papers.append(
+                        {
+                            "paper": tagged.paper,
+                            "processed_title": process_latex_commands(tagged.paper.title),
+                            "added_at": tagged.added_at,
+                        }
+                    )
 
         # Get tags for this specific paper
         paper_tag_objs = TaggedPaper.objects.filter(
@@ -407,26 +456,20 @@ def get_valid_papers(context, current_paper=None):
     if date_cutoff:
         paper_query = paper_query.filter(created__gte=date_cutoff)
     if context["category_filter"]:
-        paper_query = paper_query.filter(
-            categories__contains=[context["category_filter"]]
-        )
+        paper_query = paper_query.filter(categories__contains=[context["category_filter"]])
 
     return paper_query
 
 
 def get_similar_embeddings(paper, valid_paper_query, num_results):
-    valid_paper_ids = valid_paper_query.values_list("id", flat=True)
-
     embedding = Embedding.objects.filter(paper=paper).first()
     if not embedding:
         return []
-
     similar_embeddings = list(
-        Embedding.objects.filter(paper_id__in=valid_paper_ids)
+        Embedding.objects.filter(paper__in=valid_paper_query)
         .annotate(distance=L2Distance("vector", embedding.vector))
         .select_related("paper")
         .prefetch_related("paper__authors")
         .order_by("distance")[:num_results]
     )
-
     return [emb.paper for emb in similar_embeddings]

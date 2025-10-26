@@ -141,7 +141,7 @@ def get_tag_drawer(request):
                 title_truncated += "..."
             papers_html += f"""
             <div style="padding: 5px; border-bottom: 1px solid #cccc; font-size: 0.9rem; cursor: pointer; position: relative;" 
-                 onclick="searchSinglePaper({tagged.paper.id})" 
+                 onclick="populateSearchWithPaper('{tagged.paper.arxiv_id}')" 
                  class="drawer-paper-card">
                 <div style="font-weight: 600; color: #2c3e50; margin-bottom: 4px; font-size: 0.95rem;">
                     <a href="/paper/{tagged.paper.id}/?tag={tag.id}&sort={sort_param}" 

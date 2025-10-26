@@ -58,7 +58,7 @@
             </a>
             
             {% if has_embedding %}
-            <a href="{% url 'papers:search' %}?single_paper={{ paper.id }}{% if current_tag %}&tag={{ current_tag.id }}{% endif %}" 
+            <a href="{% url 'papers:search' %}?q=paper:+{{ paper.arxiv_id }}{% if current_tag %}&tag={{ current_tag.id }}{% endif %}" 
                class="btn">
                 Find Similar Papers
             </a>
