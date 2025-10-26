@@ -4,6 +4,12 @@
 {% block content %}
 
 <div class="paper-card" data-paper-id="{{ paper.id }}">
+    <div style="margin-bottom: 1rem;">
+        <a href="#" id="back-to-search" style="color: #2c3e50; text-decoration: none; font-weight: 500;">
+            ← Back to Search
+        </a>
+    </div>
+    
     <h1 class="paper-title">{{ paper.title }}</h1>
     
     <div class="paper-authors">
@@ -119,5 +125,67 @@
         {% endif %}
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const backButton = document.getElementById('back-to-search');
+    const referrer = document.referrer;
+    
+    // Add click handler that reads current state at click time
+    backButton.addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        // Read current tag context at click time (not page load)
+        const currentParams = new URLSearchParams(window.location.search);
+        const currentTag = currentParams.get('tag');
+        
+        // Check if referrer is a search page on our site
+        const isSearchReferrer = referrer && 
+                                referrer.includes(window.location.origin) && 
+                                (referrer.includes('/search') || referrer.includes('/?'));
+        
+        let targetUrl;
+        
+        if (isSearchReferrer) {
+            // Extract search params from referrer
+            try {
+                const referrerUrl = new URL(referrer);
+                const referrerParams = new URLSearchParams(referrerUrl.search);
+                
+                // Build new params: use referrer's search params but current tag context
+                const backParams = new URLSearchParams();
+                
+                // Copy search-related params from referrer
+                const searchParams = ['q', 'date_filter', 'category', 'sort'];
+                searchParams.forEach(param => {
+                    const value = referrerParams.get(param);
+                    if (value) {
+                        backParams.set(param, value);
+                    }
+                });
+                
+                // Use current tag context (from detail page URL at click time)
+                if (currentTag) {
+                    backParams.set('tag', currentTag);
+                }
+                
+                // Build the URL
+                const searchUrl = '{% url "papers:search" %}';
+                targetUrl = searchUrl + (backParams.toString() ? '?' + backParams.toString() : '');
+            } catch (e) {
+                console.error('Error parsing referrer:', e);
+                // Fallback: go to search with just current tag
+                targetUrl = currentTag ? '{% url "papers:search" %}?tag=' + currentTag : '{% url "papers:search" %}';
+            }
+        } else {
+            // No valid search referrer: go to empty search with current tag context
+            targetUrl = currentTag ? '{% url "papers:search" %}?tag=' + currentTag : '{% url "papers:search" %}';
+        }
+        
+        // Navigate to the constructed URL
+        window.location.href = targetUrl;
+    });
+});
+</script>
 
 {% endblock %}
