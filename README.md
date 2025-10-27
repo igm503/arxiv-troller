@@ -71,13 +71,12 @@ python manage.py add_embeddings
 python manage.py add_citations
 ```
 
-## Technical Stack
+### Made with
 
 - [**Django**](https://github.com/django/django) for the web framework
 - [**PostgreSQL**](https://github.com/postgres/postgres) with [**PGVector**](https://github.com/pgvector/pgvector) for embedding storage and similarity search
 
-## Future Directions
+## Todo
 
-Planned enhancements include:
-- Enhanced tag management features
 - Citation-based search to discover papers through reference networks
+- Faster searches
