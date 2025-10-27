@@ -1,4 +1,4 @@
-# [ArXiv Troler](https://arxiv-troller.com/)
+# [ArXiv Troller](https://arxiv-troller.com/)
 
 ![Alt text](assets/search.png?raw=true "Arxiv Troller Search")
 
