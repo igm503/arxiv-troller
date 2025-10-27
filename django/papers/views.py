@@ -186,6 +186,10 @@ def search(request):
                 )
             context["tagged_papers"] = tagged_papers_processed
 
+
+    if not context["date_filter"]:
+        context["date_filter"] = "1week"
+
     # If there's a query error, don't execute search
     if query_error:
         papers, search_context = [], None
@@ -261,9 +265,6 @@ def keyword_search(context):
     """Execute keyword search - returns (results, has_more, search_context, all_categories)"""
     query = context["query"]
 
-    if not context["date_filter"]:
-        context["date_filter"] = "all"
-
     search_context = {
         "type": "keyword",
         "query": query,
@@ -294,9 +295,6 @@ def paper_search(context):
             # If both fail, raise 404
             paper = get_object_or_404(Paper, id=paper_id)
 
-    if not context["date_filter"]:
-        context["date_filter"] = "1week"
-
     search_context = {
         "type": "single_paper",
         "paper": paper,
@@ -312,9 +310,6 @@ def paper_search(context):
 def tag_search(context):
     """Execute similarity search for all papers in a tag - returns (results, has_more, search_context, all_categories)"""
     tag = context["parsed_tag_for_search"]  # Use the tag from query parsing, not drawer state
-
-    if not context["date_filter"]:
-        context["date_filter"] = "1week"
 
     search_context = {
         "type": "tag_all",
