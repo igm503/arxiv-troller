@@ -10,8 +10,18 @@ from django.utils import timezone
 from pgvector.django import L2Distance
 from django.db import connection
 
-from .models import Paper, EmbeddingGeminiHalf512, Tag, TaggedPaper
+from .models import (
+    Paper,
+    Tag,
+    TaggedPaper,
+    EmbeddingGeminiHalf3072,
+    EmbeddingGeminiHalf512,
+    EmbeddingVoyageHalf2048,
+    EmbeddingVoyageBit2048,
+    EmbeddingVoyageHalf256,
+)
 
+EMBEDDING_MODEL = EmbeddingGeminiHalf3072
 RESULTS_PER_PAGE = 40
 MAX_RESULTS = 400
 
@@ -369,7 +379,7 @@ def paper_detail(request, paper_id):
     )
 
     # Check if embedding exists
-    has_embedding = EmbeddingGeminiHalf512.objects.filter(
+    has_embedding = EMBEDDING_MODEL.objects.filter(
         paper=paper, model_name="gemini-embedding-001", embedding_type="abstract"
     ).exists()
 
@@ -457,11 +467,11 @@ def get_valid_papers(context, current_paper=None):
 
 
 def get_similar_embeddings(paper, valid_paper_query, num_results):
-    embedding = EmbeddingGeminiHalf512.objects.filter(paper=paper).first()
+    embedding = EMBEDDING_MODEL.objects.filter(paper=paper).first()
     if not embedding:
         return []
     similar_embeddings = list(
-        EmbeddingGeminiHalf512.objects.filter(paper__in=valid_paper_query)
+        EMBEDDING_MODEL.objects.filter(paper__in=valid_paper_query)
         .annotate(distance=L2Distance("vector", embedding.vector))
         .select_related("paper")
         .prefetch_related("paper__authors")
