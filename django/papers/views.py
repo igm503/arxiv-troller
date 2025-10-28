@@ -10,7 +10,7 @@ from django.utils import timezone
 from pgvector.django import L2Distance
 from django.db import connection
 
-from .models import Paper, Embedding, Tag, TaggedPaper
+from .models import Paper, EmbeddingReduced, Tag, TaggedPaper
 
 RESULTS_PER_PAGE = 40
 MAX_RESULTS = 400
@@ -186,7 +186,6 @@ def search(request):
                 )
             context["tagged_papers"] = tagged_papers_processed
 
-
     if not context["date_filter"]:
         context["date_filter"] = "1week"
 
@@ -328,7 +327,8 @@ def tag_search(context):
 
     # Calculate papers per source - need enough to cover offset + page + 1
     total_needed = RESULTS_PER_PAGE
-    res_per_source = max(1, total_needed // max(1, len(tagged_papers))) + 1
+    res_per_source = max(2, total_needed // max(1, len(tagged_papers))) + 1
+    # we won't use more than 10 results per source
 
     results = []
     seen_papers = set()
@@ -369,7 +369,7 @@ def paper_detail(request, paper_id):
     )
 
     # Check if embedding exists
-    has_embedding = Embedding.objects.filter(
+    has_embedding = EmbeddingReduced.objects.filter(
         paper=paper, model_name="gemini-embedding-001", embedding_type="abstract"
     ).exists()
 
@@ -457,11 +457,11 @@ def get_valid_papers(context, current_paper=None):
 
 
 def get_similar_embeddings(paper, valid_paper_query, num_results):
-    embedding = Embedding.objects.filter(paper=paper).first()
+    embedding = EmbeddingReduced.objects.filter(paper=paper).first()
     if not embedding:
         return []
     similar_embeddings = list(
-        Embedding.objects.filter(paper__in=valid_paper_query)
+        EmbeddingReduced.objects.filter(paper__in=valid_paper_query)
         .annotate(distance=L2Distance("vector", embedding.vector))
         .select_related("paper")
         .prefetch_related("paper__authors")

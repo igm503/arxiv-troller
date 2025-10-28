@@ -100,3 +100,18 @@ class TaggedPaper(models.Model):
     class Meta:
         unique_together = ("tag", "paper")
         ordering = ["-added_at"]
+
+
+class EmbeddingReduced(models.Model):
+    paper = models.ForeignKey(Paper, on_delete=models.CASCADE)
+    model_name = models.CharField(max_length=100)
+    embedding_type = models.CharField(max_length=50)
+    vector = HalfVectorField(dimensions=3072, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "papers_embedding_reduced"
+        unique_together = ("paper", "model_name", "embedding_type")
+        indexes = [
+            models.Index(fields=["model_name", "embedding_type"]),
+        ]
