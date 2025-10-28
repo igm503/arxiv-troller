@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.postgres.fields import ArrayField
 from django.contrib.auth.models import User
-from pgvector.django import HalfVectorField
+from pgvector.django import HalfVectorField, BitField
 
 
 class Author(models.Model):
@@ -84,7 +84,7 @@ class EmbeddingVoyageHalf256(models.Model):
 
 class EmbeddingVoyageBit2048(models.Model):
     paper = models.OneToOneField(Paper, on_delete=models.CASCADE, primary_key=True)
-    vector = HalfVectorField(dimensions=2048)
+    vector = BitField(length=2048)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
