@@ -6,7 +6,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("papers", "0016_rename_embedding_embeddinggeminihalf3072_and_more"),
     ]
@@ -30,8 +29,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name="embeddinggeminihalf3072",
             name="vector",
-            field=pgvector.django.halfvec.HalfVectorField(default=0, dimensions=3072),
-            preserve_default=False,
+            field=pgvector.django.halfvec.HalfVectorField(dimensions=3072),
         ),
         migrations.RemoveField(
             model_name="embeddinggeminihalf3072",

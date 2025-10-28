@@ -59,31 +59,31 @@ class Citation(models.Model):
 
 
 class EmbeddingGeminiHalf3072(models.Model):
-    paper = models.OneToOneField(Paper, on_delete=models.CASCADE)
+    paper = models.OneToOneField(Paper, on_delete=models.CASCADE, primary_key=True)
     vector = HalfVectorField(dimensions=3072)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
 class EmbeddingGeminiHalf512(models.Model):
-    paper = models.OneToOneField(Paper, on_delete=models.CASCADE)
-    vector = HalfVectorField(dimensions=3072, null=True, blank=True)
+    paper = models.OneToOneField(Paper, on_delete=models.CASCADE, primary_key=True)
+    vector = HalfVectorField(dimensions=512)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
 class EmbeddingVoyageHalf2048(models.Model):
-    paper = models.OneToOneField(Paper, on_delete=models.CASCADE)
+    paper = models.OneToOneField(Paper, on_delete=models.CASCADE, primary_key=True)
     vector = HalfVectorField(dimensions=2048)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
 class EmbeddingVoyageHalf256(models.Model):
-    paper = models.OneToOneField(Paper, on_delete=models.CASCADE)
+    paper = models.OneToOneField(Paper, on_delete=models.CASCADE, primary_key=True)
     vector = HalfVectorField(dimensions=256)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
 class EmbeddingVoyageBit2048(models.Model):
-    paper = models.OneToOneField(Paper, on_delete=models.CASCADE)
+    paper = models.OneToOneField(Paper, on_delete=models.CASCADE, primary_key=True)
     vector = HalfVectorField(dimensions=2048)
     created_at = models.DateTimeField(auto_now_add=True)
 
