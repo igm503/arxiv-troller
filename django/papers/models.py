@@ -7,16 +7,16 @@ from pgvector.django import HalfVectorField
 class Author(models.Model):
     keyname = models.CharField(max_length=200)
     forenames = models.CharField(max_length=200, null=True, blank=True)
-    
+
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['keyname', 'forenames'],
-                name='papers_author_keyname_forenames_unique',
-                nulls_distinct=False
+                fields=["keyname", "forenames"],
+                name="papers_author_keyname_forenames_unique",
+                nulls_distinct=False,
             )
         ]
-    
+
     def __str__(self):
         if self.forenames:
             return f"{self.forenames} {self.keyname}"
@@ -50,12 +50,8 @@ class PaperAuthor(models.Model):
 
 
 class Citation(models.Model):
-    citing_paper = models.ForeignKey(
-        Paper, on_delete=models.CASCADE, related_name="references"
-    )
-    cited_paper = models.ForeignKey(
-        Paper, on_delete=models.CASCADE, related_name="citations"
-    )
+    citing_paper = models.ForeignKey(Paper, on_delete=models.CASCADE, related_name="references")
+    cited_paper = models.ForeignKey(Paper, on_delete=models.CASCADE, related_name="citations")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -70,6 +66,21 @@ class Embedding(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        unique_together = ("paper", "model_name", "embedding_type")
+        indexes = [
+            models.Index(fields=["model_name", "embedding_type"]),
+        ]
+
+
+class EmbeddingReduced(models.Model):
+    paper = models.ForeignKey(Paper, on_delete=models.CASCADE)
+    model_name = models.CharField(max_length=100)
+    embedding_type = models.CharField(max_length=50)
+    vector = HalfVectorField(dimensions=3072, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "papers_embedding_reduced"
         unique_together = ("paper", "model_name", "embedding_type")
         indexes = [
             models.Index(fields=["model_name", "embedding_type"]),
@@ -100,18 +111,3 @@ class TaggedPaper(models.Model):
     class Meta:
         unique_together = ("tag", "paper")
         ordering = ["-added_at"]
-
-
-class EmbeddingReduced(models.Model):
-    paper = models.ForeignKey(Paper, on_delete=models.CASCADE)
-    model_name = models.CharField(max_length=100)
-    embedding_type = models.CharField(max_length=50)
-    vector = HalfVectorField(dimensions=3072, null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        db_table = "papers_embedding_reduced"
-        unique_together = ("paper", "model_name", "embedding_type")
-        indexes = [
-            models.Index(fields=["model_name", "embedding_type"]),
-        ]
