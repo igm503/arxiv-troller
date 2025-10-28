@@ -2,8 +2,8 @@ import time
 import statistics
 from django.core.management.base import BaseCommand
 from django.db import connection
-from papers.models import Paper, Embedding
-from papers.views import get_similar_embeddings, get_date_cutoff
+from papers.models import Paper
+from papers.views import get_similar_embeddings, get_date_cutoff, EMBEDDING_MODEL
 
 
 class Command(BaseCommand):
@@ -39,7 +39,7 @@ class Command(BaseCommand):
         paper_id = options["paper_id"]
         if paper_id:
             test_paper = Paper.objects.get(id=paper_id)
-            if not Embedding.objects.filter(paper=test_paper).exists():
+            if not EMBEDDING_MODEL.objects.filter(paper=test_paper).exists():
                 self.stdout.write(self.style.ERROR(f"Paper {paper_id} has no embedding"))
                 return
             test_papers = [test_paper] * options["num_trials"]
@@ -47,9 +47,7 @@ class Command(BaseCommand):
             self.stdout.write(f"Paper ID: {test_paper.id}")
         else:
             # Get random papers with embeddings for each trial
-            test_papers = list(
-                Paper.objects.filter(embedding__isnull=False).order_by("?")[: options["num_trials"]]
-            )
+            test_papers = list(Paper.objects.order_by("?")[: options["num_trials"]])
             if len(test_papers) < options["num_trials"]:
                 self.stdout.write(
                     self.style.WARNING(
@@ -66,7 +64,17 @@ class Command(BaseCommand):
         self.stdout.write(f"Results per query: {options['num_results']}\n")
 
         # Date ranges to test (from 1 month onwards)
-        date_ranges = ["1day", "3day", "1week", "1month", "3months", "6months", "1year", "2years", "all"]
+        date_ranges = [
+            "1day",
+            "3day",
+            "1week",
+            "1month",
+            "3months",
+            "6months",
+            "1year",
+            "2years",
+            "all",
+        ]
 
         results = {}
 
