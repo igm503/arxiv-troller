@@ -58,33 +58,34 @@ class Citation(models.Model):
         unique_together = ("citing_paper", "cited_paper")
 
 
-class Embedding(models.Model):
-    paper = models.ForeignKey(Paper, on_delete=models.CASCADE)
-    model_name = models.CharField(max_length=100)
-    embedding_type = models.CharField(max_length=50)
+class EmbeddingGeminiHalf3072(models.Model):
+    paper = models.OneToOneField(Paper, on_delete=models.CASCADE)
+    vector = HalfVectorField(dimensions=3072)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class EmbeddingGeminiHalf512(models.Model):
+    paper = models.OneToOneField(Paper, on_delete=models.CASCADE)
     vector = HalfVectorField(dimensions=3072, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        unique_together = ("paper", "model_name", "embedding_type")
-        indexes = [
-            models.Index(fields=["model_name", "embedding_type"]),
-        ]
 
-
-class EmbeddingReduced(models.Model):
-    paper = models.ForeignKey(Paper, on_delete=models.CASCADE)
-    model_name = models.CharField(max_length=100)
-    embedding_type = models.CharField(max_length=50)
-    vector = HalfVectorField(dimensions=3072, null=True, blank=True)
+class EmbeddingVoyageHalf2048(models.Model):
+    paper = models.OneToOneField(Paper, on_delete=models.CASCADE)
+    vector = HalfVectorField(dimensions=2048)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        db_table = "papers_embedding_reduced"
-        unique_together = ("paper", "model_name", "embedding_type")
-        indexes = [
-            models.Index(fields=["model_name", "embedding_type"]),
-        ]
+
+class EmbeddingVoyageHalf256(models.Model):
+    paper = models.OneToOneField(Paper, on_delete=models.CASCADE)
+    vector = HalfVectorField(dimensions=256)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class EmbeddingVoyageBit2048(models.Model):
+    paper = models.OneToOneField(Paper, on_delete=models.CASCADE)
+    vector = HalfVectorField(dimensions=2048)
+    created_at = models.DateTimeField(auto_now_add=True)
 
 
 class Tag(models.Model):
