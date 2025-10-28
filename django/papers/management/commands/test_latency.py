@@ -66,7 +66,7 @@ class Command(BaseCommand):
         self.stdout.write(f"Results per query: {options['num_results']}\n")
 
         # Date ranges to test (from 1 month onwards)
-        date_ranges = ["1month", "3months", "6months", "1year", "2years", "all"]
+        date_ranges = ["1day", "3day", "1week", "1month", "3months", "6months", "1year", "2years", "all"]
 
         results = {}
 
