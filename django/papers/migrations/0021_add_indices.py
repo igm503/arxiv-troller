@@ -21,7 +21,7 @@ class Migration(migrations.Migration):
                 CREATE INDEX papers_embeddingvoyagehalf2048_vector_hnsw_idx 
                 ON papers_embeddingvoyagehalf2048 
                 USING hnsw (vector halfvec_l2_ops) 
-                WITH (m='32', ef_construction='256');
+                WITH (m='16', ef_construction='256');
             """,
             reverse_sql="DROP INDEX IF EXISTS papers_embeddingvoyagehalf2048_vector_hnsw_idx;",
         ),

@@ -2,13 +2,17 @@ from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
-from google import genai
-from google.genai import types
 from django.core.management.base import BaseCommand
 import numpy as np
 from dotenv import load_dotenv
+from voyageai import Client
 
-from papers.models import Paper, EmbeddingGeminiHalf3072, EmbeddingGeminiHalf512
+from papers.models import (
+    Paper,
+    EmbeddingVoyageHalf2048,
+    EmbeddingVoyageHalf256,
+    EmbeddingVoyageBit2048,
+)
 from .limiter import RateLimiter
 
 
@@ -18,20 +22,18 @@ class Command(BaseCommand):
     def __init__(self):
         super().__init__()
         self._local = threading.local()
-        self.rate_limiter = None
+        self.rate_limiter = None  # Will be initialized in handle()
 
     def add_arguments(self, parser):
-        parser.add_argument(
-            "--model", default="gemini-embedding-001", help="Embedding model to use"
-        )
-        parser.add_argument("--batch-size", type=int, default=100, help="Batch size for processing")
+        parser.add_argument("--model", default="voyage-3-large", help="Embedding model to use")
+        parser.add_argument("--batch-size", type=int, default=128, help="Batch size for processing")
         parser.add_argument("--workers", type=int, default=4, help="Number of parallel workers")
-        parser.add_argument("--rate-limit", type=float, default=0.5, help="API calls per second")
+        parser.add_argument("--rate-limit", type=float, default=1.0, help="API calls per second")
 
     def get_client(self):
         """Get or create a client for the current thread"""
         if not hasattr(self._local, "client"):
-            self._local.client = genai.Client()
+            self._local.client = Client()
         return self._local.client
 
     def handle(self, *args, **options):
@@ -43,16 +45,14 @@ class Command(BaseCommand):
         # Initialize rate limiter
         self.rate_limiter = RateLimiter(options["rate_limit"])
 
-        papers_queryset = Paper.objects.filter(EmbeddingGeminiHalf3072=True).order_by("id")
+        papers_queryset = Paper.objects.filter(embeddingvoyagehalf2048__isnull=True).order_by("id")
 
         total = papers_queryset.count()
         self.stdout.write(f"Processing {total} papers with {num_workers} workers")
         self.stdout.write(f"Rate limit: {options['rate_limit']} calls/second")
 
-        # Pre-fetch all IDs (this is fast)
         all_ids = list(papers_queryset.values_list("id", flat=True))
 
-        # Create ID chunks
         id_chunks = [all_ids[i : i + batch_size] for i in range(0, len(all_ids), batch_size)]
 
         self.stdout.write(f"Created {len(id_chunks)} batches")
@@ -85,31 +85,31 @@ class Command(BaseCommand):
         try:
             self.rate_limiter.acquire()
 
-            embeddings = [
-                np.array(e.values)
-                for e in client.models.embed_content(
-                    model=model_name,
-                    contents=texts,
-                    config=types.EmbedContentConfig(task_type="SEMANTIC_SIMILARITY"),
-                ).embeddings
-            ]
+            embeddings = client.embed(
+                texts, model=model_name, input_type=None, output_dimension=2048
+            ).embeddings
 
-            embedding_objects = []
-            embedding_reduced_objects = []
+            embedding_2048_objects = []
+            embedding_256_objects = []
+            embedding_bit2048_objects = []
             for paper, embedding in zip(batch, embeddings):
-                embedding_objects.append(
-                    EmbeddingGeminiHalf3072(paper=paper, vector=embedding.tolist())
+                embedding_2048_objects.append(
+                    EmbeddingVoyageHalf2048(paper=paper, vector=embedding)
                 )
-                embedding_512 = embedding[:512]
-                norm_512 = np.linalg.norm(embedding_512)
-                if norm_512 > 0:
-                    embedding_512 = embedding_512 / norm_512
-                embedding_reduced_objects.append(
-                    EmbeddingGeminiHalf512(paper=paper, vector=embedding_512.tolist())
+                embedding_256 = embedding[:256]
+                norm_256 = np.linalg.norm(embedding_256)
+                embedding_256 = embedding_256 / norm_256
+                embedding_256_objects.append(
+                    EmbeddingVoyageHalf256(paper=paper, vector=embedding_256)
+                )
+                embedding_bit = "".join("1" if x > 0 else "0" for x in embedding)
+                embedding_bit2048_objects.append(
+                    EmbeddingVoyageBit2048(paper=paper, vector=embedding_bit)
                 )
 
-            EmbeddingGeminiHalf3072.objects.bulk_create(embedding_objects)
-            EmbeddingGeminiHalf512.objects.bulk_create(embedding_reduced_objects)
+            EmbeddingVoyageHalf2048.objects.bulk_create(embedding_2048_objects)
+            EmbeddingVoyageHalf256.objects.bulk_create(embedding_256_objects)
+            EmbeddingVoyageBit2048.objects.bulk_create(embedding_bit2048_objects)
             pbar.update(len(batch))
 
         except Exception as e:
