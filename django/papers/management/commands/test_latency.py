@@ -18,22 +18,22 @@ class Command(BaseCommand):
         parser.add_argument(
             "--num-trials",
             type=int,
-            default=5,
-            help="Number of trials per date range (default: 5)",
+            default=20,
+            help="Number of trials per date range (default: 20)",
         )
         parser.add_argument(
             "--num-results",
             type=int,
-            default=40,
-            help="Number of results to fetch (default: 40)",
+            default=20,
+            help="Number of results to fetch (default: 20)",
         )
 
     def handle(self, *args, **options):
         # Set HNSW parameters
         with connection.cursor() as cursor:
-            cursor.execute("SET hnsw.ef_search = 64")
+            cursor.execute("SET hnsw.ef_search = 32")
             cursor.execute("SET hnsw.iterative_scan = 'relaxed_order'")
-            cursor.execute("SET hnsw.max_scan_tuples = 4000")
+            # cursor.execute("SET hnsw.max_scan_tuples = 4000")
 
         # Get test papers
         paper_id = options["paper_id"]

@@ -7,7 +7,7 @@ from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.template.loader import render_to_string
 from django.utils import timezone
-from pgvector.django import L2Distance
+from pgvector.django import L2Distance, HammingDistance
 from django.db import connection
 
 from .models import (
@@ -21,8 +21,14 @@ from .models import (
     EmbeddingVoyageHalf256,
 )
 
-EMBEDDING_MODEL = EmbeddingGeminiHalf3072
-RESULTS_PER_PAGE = 40
+# EMBEDDING_MODEL = EmbeddingVoyageBit2048
+EMBEDDING_MODEL = EmbeddingVoyageHalf2048
+# EMBEDDING_MODEL = EmbeddingGeminiHalf3072
+if "Bit" in EMBEDDING_MODEL.__name__:
+    DISTANCE_FUNCTION = HammingDistance
+else:
+    DISTANCE_FUNCTION = L2Distance
+RESULTS_PER_PAGE = 20
 MAX_RESULTS = 400
 
 
@@ -155,8 +161,8 @@ def search(request):
     }
 
     with connection.cursor() as cursor:
-        cursor.execute("SET hnsw.ef_search = 64")
-        cursor.execute("SET hnsw.iterative_scan = 'strict_order'")
+        cursor.execute("SET hnsw.ef_search = 256")
+        cursor.execute("SET hnsw.iterative_scan = 'relaxed_order'")
         cursor.execute("SET hnsw.max_scan_tuples = 1000")
 
     if request.user.is_authenticated:
@@ -472,7 +478,7 @@ def get_similar_embeddings(paper, valid_paper_query, num_results):
         return []
     similar_embeddings = list(
         EMBEDDING_MODEL.objects.filter(paper__in=valid_paper_query)
-        .annotate(distance=L2Distance("vector", embedding.vector))
+        .annotate(distance=DISTANCE_FUNCTION("vector", embedding.vector))
         .select_related("paper")
         .prefetch_related("paper__authors")
         .order_by("distance")[:num_results]
