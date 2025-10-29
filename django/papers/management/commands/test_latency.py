@@ -79,6 +79,7 @@ class Command(BaseCommand):
         results = {}
 
         for date_filter in date_ranges:
+
             self.stdout.write(f"\nTesting date range: {date_filter}")
             self.stdout.write("-" * 80)
 

@@ -43,7 +43,7 @@ class Command(BaseCommand):
         # Initialize rate limiter
         self.rate_limiter = RateLimiter(options["rate_limit"])
 
-        papers_queryset = Paper.objects.filter(EmbeddingGeminiHalf3072=True).order_by("id")
+        papers_queryset = Paper.objects.filter(embeddinggeminihalf3072__isnull=True).order_by("id")
 
         total = papers_queryset.count()
         self.stdout.write(f"Processing {total} papers with {num_workers} workers")
