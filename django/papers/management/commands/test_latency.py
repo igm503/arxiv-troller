@@ -24,14 +24,14 @@ class Command(BaseCommand):
         parser.add_argument(
             "--num-results",
             type=int,
-            default=20,
+            default=100,
             help="Number of results to fetch (default: 20)",
         )
 
     def handle(self, *args, **options):
         # Set HNSW parameters
         with connection.cursor() as cursor:
-            cursor.execute("SET hnsw.ef_search = 32")
+            cursor.execute("SET hnsw.ef_search = 512")
             cursor.execute("SET hnsw.iterative_scan = 'relaxed_order'")
             # cursor.execute("SET hnsw.max_scan_tuples = 4000")
 
@@ -79,7 +79,6 @@ class Command(BaseCommand):
         results = {}
 
         for date_filter in date_ranges:
-
             self.stdout.write(f"\nTesting date range: {date_filter}")
             self.stdout.write("-" * 80)
 
@@ -107,7 +106,8 @@ class Command(BaseCommand):
                 paper_query = base_paper_query.exclude(id=paper.id)
 
                 start = time.time()
-                similar_papers = get_similar_embeddings(paper, paper_query, options["num_results"])
+                num_results = options["num_results"]
+                similar_papers = get_similar_embeddings(paper, paper_query, num_results)
                 elapsed = (time.time() - start) * 1000  # Convert to ms
 
                 trial_times.append(elapsed)

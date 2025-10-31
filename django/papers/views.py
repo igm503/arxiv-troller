@@ -2,6 +2,7 @@ import json
 import re
 from datetime import timedelta
 import random
+import time
 
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
@@ -21,9 +22,7 @@ from .models import (
     EmbeddingVoyageHalf256,
 )
 
-# EMBEDDING_MODEL = EmbeddingVoyageBit2048
-EMBEDDING_MODEL = EmbeddingVoyageHalf2048
-# EMBEDDING_MODEL = EmbeddingGeminiHalf3072
+EMBEDDING_MODEL = EmbeddingVoyageBit2048
 if "Bit" in EMBEDDING_MODEL.__name__:
     DISTANCE_FUNCTION = HammingDistance
 else:
@@ -343,12 +342,13 @@ def tag_search(context):
 
     # Calculate papers per source - need enough to cover offset + page + 1
     total_needed = RESULTS_PER_PAGE
-    res_per_source = max(2, total_needed // max(1, len(tagged_papers))) + 1
+    res_per_source = max(1, total_needed // max(1, len(tagged_papers))) + 1
     # we won't use more than 10 results per source
 
     results = []
     seen_papers = set()
     count = 0
+    start_time = time.time()
     for paper in tagged_papers:
         similars = get_similar_embeddings(paper, valid_paper_query, res_per_source)
         new_similars = []
@@ -362,7 +362,7 @@ def tag_search(context):
         if new_similars:
             results.append(new_similars)
 
-        if count >= total_needed:
+        if count >= total_needed or time.time() - start_time > 2:
             print("breaking")
             break
 
