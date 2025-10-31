@@ -381,15 +381,10 @@ def paper_detail(request, paper_id):
     """Display paper details with option to search similar from here"""
     paper = get_object_or_404(Paper, id=paper_id)
 
-    # Get authors in order
     authors = (
         paper.authors.through.objects.filter(paper=paper).select_related("author").order_by("order")
     )
-
-    # Check if embedding exists
-    has_embedding = EMBEDDING_MODEL.objects.filter(
-        paper=paper, model_name="gemini-embedding-001", embedding_type="abstract"
-    ).exists()
+    has_embedding = EMBEDDING_MODEL.objects.filter(paper=paper).exists()
 
     abstract = process_latex_commands(paper.abstract)
 
