@@ -350,6 +350,8 @@ def tag_search(context):
     count = 0
     start_time = time.time()
     for paper in tagged_papers:
+        if time.time() - start_time > 2:  # need to finish before timeout
+            res_per_source = total_needed
         similars = get_similar_embeddings(paper, valid_paper_query, res_per_source)
         new_similars = []
 
@@ -362,7 +364,7 @@ def tag_search(context):
         if new_similars:
             results.append(new_similars)
 
-        if count >= total_needed or time.time() - start_time > 2:
+        if count >= total_needed:
             print("breaking")
             break
 
