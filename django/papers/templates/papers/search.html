@@ -7,13 +7,13 @@
   <form method="get" action="{% url 'papers:search' %}" id="search-form">
     <div style="position: relative; display: flex; align-items: center; gap: 0.5rem;">
       <input type="text" name="q" id="search-input" value="{{ query }}" placeholder="Search papers by title..." autofocus style="flex: 1;">
-      <button type="button" id="help-toggle" style="padding: 0.625rem; font-size: 1.2rem; background: #e8eaed; border: 1px solid #000000; cursor: pointer; line-height: 1;">?</button>
+      <button type="button" id="help-toggle" style="padding: 0.625rem; font-size: 1.2rem; background: #5a6678;; border: 1px solid #000000; cursor: pointer; line-height: 1;">?</button>
       <button type="submit">Search</button>
     </div>
   </form>
   
   <!-- Help dropdown -->
-  <div id="help-dropdown" style="display: {% if not results %}block{% else %}none{% endif %}; margin-top: 0.5rem; padding: 1rem; border: 1px solid #000000; background: #f8f9fa;">
+  <div id="help-dropdown" style="display: {% if not results %}block{% else %}none{% endif %}; margin-top: 1.5rem; padding: 1rem; border: 1px solid #000000; background: #e8eaed;">
     <h4 style="margin-top: 0; margin-bottom: 0.75rem;">Search Syntax</h4>
     <div style="line-height: 1.8;">
       <p style="margin-bottom: 0.5rem;"><strong>Keyword search:</strong> Enter any text to search paper titles</p>
