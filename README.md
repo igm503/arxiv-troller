@@ -67,8 +67,7 @@ cd arxiv-troller
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py harvest_records
-python manage.py add_embeddings
-python manage.py add_citations
+python manage.py add_[voyage | gemini]_embeddings
 ```
 
 ### Made with
@@ -79,4 +78,7 @@ python manage.py add_citations
 ## Todo
 
 - Citation-based search to discover papers through reference networks
-- Faster searches
+- Way to indicate paper has already been seen
+- Use hidden papers to improve search results
+- recommendation generation
+- allow actual tag filtering
