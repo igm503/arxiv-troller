@@ -1,7 +1,3 @@
-SEARCH
-- quotes in keyword searches
-- clickable paper title in search info for paper search
-
 DATA
 - fix submit dates
 - get citation data

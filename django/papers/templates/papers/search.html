@@ -58,8 +58,14 @@
     <p>Finding papers similar to all papers in this tag</p>
     {% elif search_context.type == 'single_paper' %}
     <h3>Similar Papers</h3>
-    <div class="paper-title">{{ search_context.paper.title }}</div>
-    <div class="paper-id">arXiv:{{ search_context.paper.arxiv_id }}</div>
+    <div class="paper-title">
+      <a href="{% url 'papers:detail' search_context.paper.id %}{% if current_tag %}?tag={{ current_tag.id }}{% if request.GET.sort %}&sort={{ request.GET.sort }}{% endif %}{% endif %}">{{ search_context.paper.title }}</a>
+    </div>
+    <div class="paper-id">
+      <a href="https://arxiv.org/abs/{{ search_context.paper.arxiv_id }}" target="_blank">
+          arXiv:{{ search_context.paper.arxiv_id }}
+      </a>
+    </div>
     {% endif %}
   </div>
   {% endif %}
