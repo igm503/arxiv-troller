@@ -302,13 +302,15 @@ def title_search(context):
 def keyword_search(context):
     """Execute keyword search - returns (results, has_more, search_context, all_categories)"""
     query = context["query"]
+    raw_query = parse_search_query(query)
     search_context = {
         "type": "keyword",
-        "query": query,
+        "query": raw_query,
     }
     valid_paper_query = get_valid_papers(context)
 
-    search_query = SearchQuery(query, config="english")
+
+    search_query = SearchQuery(raw_query, config="english", search_type="raw")
 
     papers = valid_paper_query.filter(search_vector=search_query)
     papers = papers.annotate(rank=SearchRank("search_vector", search_query))
@@ -316,6 +318,33 @@ def keyword_search(context):
     papers = papers.prefetch_related("authors")[:RESULTS_PER_PAGE]
 
     return papers, search_context
+
+
+def parse_search_query(query):
+    """Parse search query into tsquery syntax with OR logic and phrase support"""
+    phrases = re.findall(r'"([^"]+)"', query)
+
+    remaining = re.sub(r'"[^"]+"', "", query)
+
+    terms = remaining.split()
+
+    query_parts = []
+
+    for term in terms:
+        term = term.strip()
+        if term:
+            query_parts.append(term)
+
+    for phrase in phrases:
+        words = phrase.split()
+        if words:
+            phrase_query = " <-> ".join(words)
+            query_parts.append(f"({phrase_query})")
+
+    if not query_parts:
+        return ""
+
+    return " | ".join(query_parts)
 
 
 def paper_search(context):

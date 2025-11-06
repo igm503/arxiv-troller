@@ -16,8 +16,9 @@
   <div id="help-dropdown" style="display: {% if not results %}block{% else %}none{% endif %}; margin-top: 1.5rem; padding: 1rem; border: 1px solid #000000; background: #e8eaed;">
     <h4 style="margin-top: 0; margin-bottom: 0.75rem;">Search Syntax</h4>
     <div style="line-height: 1.8;">
-      <p style="margin-bottom: 0.5rem;"><strong>Keyword search:</strong> Enter any text to search paper titles</p>
-      <p style="margin-bottom: 0.5rem; padding-left: 1rem; font-family: monospace; color: #666;">Example: neural networks</p>
+      <p style="margin-bottom: 0.5rem;"><strong>Keyword search:</strong> Enter any text to search paper titles and abstracts</p>
+      <p style="margin-bottom: 0.5rem; padding-left: 1rem; font-family: monospace; color: #666;">Example: latent attention</p>
+      <p style="margin-bottom: 0.5rem; padding-left: 1rem; font-family: monospace; color: #666;">Note: quotes are supported for phrases</p>
 
       <p style="margin-bottom: 0.5rem; margin-top: 1rem;"><strong>Title search:</strong> Search for papers title with exact substring match</p>
       <p style="margin-bottom: 0.5rem; padding-left: 1rem; font-family: monospace; color: #666;">Format: title: &lt;title_substring&gt;</p>
@@ -48,7 +49,7 @@
   <div class="search-context">
     {% if search_context.type == 'keyword' %}
     <h3>Keyword Search Results</h3>
-    <p>Searching for: <strong>"{{ search_context.query }}"</strong></p>
+    <p>Searching for: <strong>[{{ search_context.query }}]</strong></p>
     {% elif search_context.type == 'title' %}
     <h3>Title Search Results</h3>
     <p>Searching for: <strong>"{{ search_context.query }}"</strong></p>
