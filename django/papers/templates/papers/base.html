@@ -668,7 +668,7 @@
                 {% else %}
                     <form method="post" action="{% url 'papers:login' %}" style="display: flex; gap: 0.5rem;">
                         {% csrf_token %}
-                        <input type="email" name="email" placeholder="Enter email to login" required>
+                        <input type="text" name="email" placeholder="Enter an email to login" required>
                         <button type="submit">Login</button>
                     </form>
                 {% endif %}
