@@ -4,7 +4,8 @@ from datetime import timedelta
 import random
 import time
 
-from django.contrib.postgres.search import SearchQuery, SearchRank
+from django.db.models import F, Func, FloatField
+from django.contrib.postgres.search import SearchQuery
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.template.loader import render_to_string
@@ -309,11 +310,17 @@ def keyword_search(context):
     }
     valid_paper_query = get_valid_papers(context)
 
-
     search_query = SearchQuery(raw_query, config="english", search_type="raw")
 
     papers = valid_paper_query.filter(search_vector=search_query)
-    papers = papers.annotate(rank=SearchRank("search_vector", search_query))
+    papers = papers.annotate(
+        rank=Func(
+            F("search_vector"),
+            search_query,
+            function="ts_rank",
+            output_field=FloatField(),
+        )
+    )
     papers = papers.order_by("-rank", "-created")
     papers = papers.prefetch_related("authors")[:RESULTS_PER_PAGE]
 
