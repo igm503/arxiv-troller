@@ -4,6 +4,7 @@ from datetime import timedelta
 import random
 import time
 
+from django.contrib.postgres.search import SearchQuery, SearchRank
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.template.loader import render_to_string
@@ -116,12 +117,17 @@ def search(request):
     parsed_single_paper_id = None
     parsed_search_all_tag = None
     parsed_tag_for_search = None  # Tag parsed from query - for SEARCH ONLY, not drawer
+    title_query = None
     actual_query = raw_query
     query_error = None
 
     if raw_query:
         # Check for "tag: X" pattern (exactly one space after colon)
         tag_match = re.match(r"^tag:\s(.+)$", raw_query)
+        # Check for "paper: X" pattern (exactly one space after colon)
+        paper_match = re.match(r"^paper:\s(.+)$", raw_query)
+        # Check for "title: X" pattern (exactly one space after colon)
+        title_match = re.match(r"^title:\s(.+)$", raw_query)
         if tag_match:
             tag_name = tag_match.group(1)
             if request.user.is_authenticated:
@@ -133,18 +139,16 @@ def search(request):
                     query_error = f"Tag '{tag_name}' does not exist"
             else:
                 query_error = "You must be logged in to search by tag"
-        else:
-            # Check for "paper: X" pattern (exactly one space after colon)
-            # Now accepts arXiv ID format (e.g., 2301.12345 or 2301.12345v2)
-            paper_match = re.match(r"^paper:\s(.+)$", raw_query)
-            if paper_match:
-                arxiv_id = paper_match.group(1).strip()
-                try:
-                    paper = Paper.objects.get(arxiv_id=arxiv_id)
-                    parsed_single_paper_id = str(paper.id)
-                    actual_query = ""
-                except Paper.DoesNotExist:
-                    query_error = f"Paper with arXiv ID '{arxiv_id}' does not exist"
+        elif paper_match:
+            arxiv_id = paper_match.group(1).strip()
+            try:
+                paper = Paper.objects.get(arxiv_id=arxiv_id)
+                parsed_single_paper_id = str(paper.id)
+                actual_query = ""
+            except Paper.DoesNotExist:
+                query_error = f"Paper with arXiv ID '{arxiv_id}' does not exist"
+        elif title_match:
+            title_query = title_match.group(1).strip()
 
     context = {
         "user_tags": [],
@@ -154,6 +158,7 @@ def search(request):
         "category_filter": query_params.get("category", ""),
         "single_paper_id": parsed_single_paper_id or query_params.get("single_paper"),
         "search_all_tag": parsed_search_all_tag or query_params.get("search_all"),
+        "title_query": title_query,
         "exclude_ids": exclude_ids,
         "query_error": query_error,
         "parsed_tag_for_search": parsed_tag_for_search,  # Pass to context for search functions
@@ -211,6 +216,8 @@ def search(request):
         papers, search_context = paper_search(context)
     elif context["search_all_tag"] and context["parsed_tag_for_search"]:
         papers, search_context = tag_search(context)
+    elif context["title_query"]:
+        papers, search_context = title_search(context)
     elif actual_query:
         papers, search_context = keyword_search(context)
     else:
@@ -275,12 +282,11 @@ def search(request):
     return render(request, "papers/search.html", context)
 
 
-def keyword_search(context):
-    """Execute keyword search - returns (results, has_more, search_context, all_categories)"""
-    query = context["query"]
-
+def title_search(context):
+    """Execute title substring search - returns (results, has_more, search_context, all_categories)"""
+    query = context["title_query"]
     search_context = {
-        "type": "keyword",
+        "type": "title",
         "query": query,
     }
 
@@ -289,6 +295,25 @@ def keyword_search(context):
     papers = papers.prefetch_related("authors").order_by("-created")
 
     papers = papers[:RESULTS_PER_PAGE]
+
+    return papers, search_context
+
+
+def keyword_search(context):
+    """Execute keyword search - returns (results, has_more, search_context, all_categories)"""
+    query = context["query"]
+    search_context = {
+        "type": "keyword",
+        "query": query,
+    }
+    valid_paper_query = get_valid_papers(context)
+
+    search_query = SearchQuery(query, config="english")
+
+    papers = valid_paper_query.filter(search_vector=search_query)
+    papers = papers.annotate(rank=SearchRank("search_vector", search_query))
+    papers = papers.order_by("-rank", "-created")
+    papers = papers.prefetch_related("authors")[:RESULTS_PER_PAGE]
 
     return papers, search_context
 

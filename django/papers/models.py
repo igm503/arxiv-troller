@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.postgres.fields import ArrayField
+from django.contrib.postgres.search import SearchVectorField
 from django.contrib.auth.models import User
 from pgvector.django import HalfVectorField, BitField
 
@@ -28,6 +29,7 @@ class Paper(models.Model):
     created = models.DateTimeField()
     title = models.TextField()
     abstract = models.TextField()
+    search_vector = SearchVectorField(null=True)
     categories = ArrayField(models.CharField(max_length=50), default=list, blank=True)
     updated = models.DateTimeField(null=True, blank=True)
     authors = models.ManyToManyField(Author, through="PaperAuthor")

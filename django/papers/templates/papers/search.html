@@ -18,6 +18,10 @@
     <div style="line-height: 1.8;">
       <p style="margin-bottom: 0.5rem;"><strong>Keyword search:</strong> Enter any text to search paper titles</p>
       <p style="margin-bottom: 0.5rem; padding-left: 1rem; font-family: monospace; color: #666;">Example: neural networks</p>
+
+      <p style="margin-bottom: 0.5rem; margin-top: 1rem;"><strong>Title search:</strong> Search for papers title with exact substring match</p>
+      <p style="margin-bottom: 0.5rem; padding-left: 1rem; font-family: monospace; color: #666;">Format: title: &lt;title_substring&gt;</p>
+      <p style="margin-bottom: 0.5rem; padding-left: 1rem; font-family: monospace; color: #666;">Example: title: a convnet for the 2020s</p>
       
       <p style="margin-bottom: 0.5rem; margin-top: 1rem;"><strong>Tag search:</strong> Search for papers similar to all papers in a tag</p>
       <p style="margin-bottom: 0.5rem; padding-left: 1rem; font-family: monospace; color: #666;">Format: tag: &lt;tag_name&gt;</p>
@@ -44,6 +48,9 @@
   <div class="search-context">
     {% if search_context.type == 'keyword' %}
     <h3>Keyword Search Results</h3>
+    <p>Searching for: <strong>"{{ search_context.query }}"</strong></p>
+    {% elif search_context.type == 'title' %}
+    <h3>Title Search Results</h3>
     <p>Searching for: <strong>"{{ search_context.query }}"</strong></p>
     {% elif search_context.type == 'tag_all' %}
     <h3>Similar Papers - Tag: {{ search_context.tag.name }}</h3>
