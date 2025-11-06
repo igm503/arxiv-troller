@@ -1,9 +1,11 @@
+SEARCH
+- quotes in keyword searches
+- clickable paper title in search info for paper search
+
 DATA
 - fix submit dates
 - get citation data
 
 UI
 - remove from tag search results
-- export tags
 - search custom date range
-- search in progress indicator
