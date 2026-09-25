@@ -3,9 +3,10 @@ from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
+from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 from .models import Tag, TaggedPaper, Paper
-from .views import process_latex_commands
+from .views import tag_drawer_papers
 
 
 def login_view(request):
@@ -114,59 +115,11 @@ def get_tag_drawer(request):
         return JsonResponse({"error": "Missing tag_id"}, status=400)
     tag = get_object_or_404(Tag, id=tag_id, user=request.user)
 
-    # Get tagged papers with sorting
-    sort = request.GET.get("sort", "added")
-    tagged_papers = TaggedPaper.objects.filter(tag=tag).select_related("paper")
-
-    if sort == "alpha":
-        tagged_papers = tagged_papers.order_by("paper__title")
-    elif sort == "submitted":
-        tagged_papers = tagged_papers.order_by("-paper__created")
-    elif sort == "updated":
-        tagged_papers = tagged_papers.order_by("-paper__updated")
-    else:  # added (default)
-        tagged_papers = tagged_papers.order_by("-added_at")
-
-    # Build HTML for papers list
-    papers_html = ""
-    if tagged_papers.exists():
-        # Get sort parameter from request
-        sort_param = request.GET.get('sort', 'added')
-        
-        for tagged in tagged_papers:
-            # Process LaTeX in title
-            processed_title = process_latex_commands(tagged.paper.title)
-            title_truncated = processed_title[:60]
-            if len(processed_title) > 60:
-                title_truncated += "..."
-            papers_html += f"""
-            <div style="padding: 5px; border-bottom: 1px solid #cccc; font-size: 0.9rem; cursor: pointer; position: relative;" 
-                 onclick="populateSearchWithPaper('{tagged.paper.arxiv_id}')" 
-                 class="drawer-paper-card">
-                <div style="font-weight: 600; color: #2c3e50; margin-bottom: 4px; font-size: 0.95rem;">
-                    <a href="/paper/{tagged.paper.id}/?tag={tag.id}&sort={sort_param}" 
-                       onclick="event.stopPropagation()"
-                       style="color: inherit; text-decoration: none;">
-                        {title_truncated}
-                    </a>
-                </div>
-                <div style="color: #999; font-size: 0.85rem; font-family: monospace; margin-bottom: 8px;">
-                    <a href="https://arxiv.org/abs/{tagged.paper.arxiv_id}" 
-                       target="_blank" 
-                       onclick="event.stopPropagation()"
-                       style="color: inherit; text-decoration: none;">
-                        {tagged.paper.arxiv_id}
-                    </a>
-                    <button class="remove-btn btn-small drawer-remove-btn"
-                            onclick="event.stopPropagation(); removeFromTag({tagged.paper.id})"
-                            style="display: none; position: absolute; bottom: 20px; right: 8px; padding: 2px 8px; line-height: 1;">
-                        −
-                    </button>
-                </div>
-            </div>
-            """
-    else:
-        papers_html = '<p style="padding: 15px; color: #999; text-align: center;">No papers tagged yet</p>'
+    papers_html = render_to_string(
+        "papers/tag_drawer_papers.html",
+        {"tagged_papers": tag_drawer_papers(tag, request.GET.get("sort", "added")), "current_tag": tag},
+        request=request,
+    )
 
     return JsonResponse(
         {

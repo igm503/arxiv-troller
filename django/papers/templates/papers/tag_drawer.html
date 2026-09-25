@@ -55,47 +55,7 @@
       {% endif %}
     </div>
     <div style="padding: 10px; padding-bottom: 70px;" id="drawer-papers-list">
-      {% for tagged in tagged_papers %}
-      <div style="
-          padding: 5px;
-          border-bottom: 1px solid #cccc;
-          font-size: 0.9rem;
-          cursor: pointer;
-          position: relative;
-        " onclick="populateSearchWithPaper('{{ tagged.paper.arxiv_id }}')" class="drawer-paper-card">
-        <div style="
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 4px;
-            font-size: 0.95rem;
-          ">
-          <a href="{% url 'papers:detail' tagged.paper.id %}?tag={{ current_tag.id }}{% if request.GET.sort %}&sort={{ request.GET.sort }}{% endif %}" onclick="event.stopPropagation()"
-            style="color: inherit; text-decoration: none">
-            {{ tagged.processed_title|truncatechars:60 }}
-          </a>
-        </div>
-        <div style="
-            color: #999;
-            font-size: 0.85rem;
-            font-family: monospace;
-            margin-bottom: 8px;
-          ">
-          <a href="https://arxiv.org/abs/{{ tagged.paper.arxiv_id }}" target="_blank" onclick="event.stopPropagation()"
-            style="color: inherit; text-decoration: none">
-            {{ tagged.paper.arxiv_id }}
-          </a>
-          <button class="remove-btn btn-small drawer-remove-btn"
-            onclick="event.stopPropagation(); removeFromTag({{ tagged.paper.id }})"
-            style="display: none; position: absolute; bottom: 20px; right: 8px; padding: 2px 8px; line-height: 1;">
-            −
-          </button>
-        </div>
-      </div>
-      {% empty %}
-      <p style="padding: 15px; color: #999; text-align: center">
-        No papers tagged yet
-      </p>
-      {% endfor %}
+      {% include 'papers/tag_drawer_papers.html' %}
     </div>
   </div>
   <div style="

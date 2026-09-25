@@ -2,6 +2,7 @@ from datetime import timedelta
 from unittest.mock import Mock, patch
 
 import numpy as np
+from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from requests import Response
@@ -16,7 +17,10 @@ from papers.models import (
     EmbeddingVoyage4,
     EmbeddingVoyage4Recent,
     Paper,
+    Tag,
+    TaggedPaper,
 )
+from papers.views import process_latex_commands
 
 
 class HarvestEncodingTests(SimpleTestCase):
@@ -141,3 +145,75 @@ class Voyage4Tests(TestCase):
         paper.delete_embeddings()
         self.assertFalse(any(model.objects.filter(paper=paper).exists() for model in EMBEDDING_MODELS))
         self.assertTrue(EmbeddingVoyage4.objects.filter(paper=self.papers[1]).exists())
+
+
+class LatexTests(SimpleTestCase):
+    def test_commands_escapes_and_links(self):
+        cases = {
+            r"\textbf{a} \emph{b} \texttt{c}": "<strong>a</strong> <em>b</em> <code>c</code>",
+            r"\url{http://y.org}": '<a href="http://y.org" target="_blank">http://y.org</a>',
+            r"\href{http://y.org}{here}": '<a href="http://y.org" target="_blank">here</a>',
+            "see https://x.org/a.": 'see <a href="https://x.org/a" target="_blank">https://x.org/a</a>.',
+            r"50\% \& \$x\$ \#1 a\_b \{c\}": "50% & $x$ #1 a_b {c}",
+            r"a\~b a~b x\,y": "a&nbsp;b a&nbsp;b x y",
+            r"line\\next": "line<br>next",
+            "``quoted''": '"quoted"',
+        }
+        for text, expected in cases.items():
+            self.assertEqual(process_latex_commands(text), expected, text)
+
+    def test_single_backtick_becomes_opening_quote(self):
+        self.assertEqual(process_latex_commands("a `quoted' word"), "a \u2018quoted' word")
+
+
+class PageTests(TestCase):
+    def setUp(self):
+        Voyage4Tests.setUp(self)
+        Voyage4Command().refresh_recent()
+
+    def login_with_tag(self, papers):
+        user = User.objects.create(username="reader")
+        tag = Tag.objects.create(user=user, name="reading")
+        for paper in papers:
+            TaggedPaper.objects.create(tag=tag, paper=paper)
+        self.client.force_login(user)
+        return tag
+
+    def test_tag_counts_and_drawer_on_search_and_detail_pages(self):
+        tag = self.login_with_tag(self.papers[:2])
+        response = self.client.get("/", {"tag": tag.id})
+        self.assertContains(response, "reading (2)")
+        self.assertEqual([t["paper"].id for t in response.context["tagged_papers"]], self.ids[1::-1])
+        response = self.client.get(f"/paper/{self.ids[2]}/", {"tag": tag.id, "sort": "alpha"})
+        self.assertEqual([t["paper"].id for t in response.context["tagged_papers"]], self.ids[:2])
+        self.assertContains(response, f"/paper/{self.ids[0]}/?tag={tag.id}&sort=alpha")
+
+    def test_ajax_drawer_matches_page_drawer(self):
+        self.papers[0].title = r"Zeta \textbf{Bold} <script>"
+        self.papers[0].save()
+        tag = self.login_with_tag(self.papers[:2])
+        html = self.client.get("/ajax/get-tag-drawer/", {"tag_id": tag.id, "sort": "alpha"}).json()["papers_html"]
+        self.assertIn("Zeta &lt;strong&gt;Bold&lt;/strong&gt; &lt;script&gt;", html)
+        self.assertLess(html.index(f"removeFromTag({self.ids[1]})"), html.index(f"removeFromTag({self.ids[0]})"))
+        self.assertIn(f"/paper/{self.ids[0]}/?tag={tag.id}&sort=alpha", html)
+        empty = Tag.objects.create(user=tag.user, name="empty")
+        html = self.client.get("/ajax/get-tag-drawer/", {"tag_id": empty.id}).json()["papers_html"]
+        self.assertIn("No papers tagged yet", html)
+
+    def test_tag_search_returns_neighbours_of_tagged_papers(self):
+        self.login_with_tag(self.papers[:2])
+        response = self.client.get("/", {"q": "tag: reading", "date_filter": "1month"})
+        ids = [r["paper"].id for r in response.context["results"]]
+        self.assertEqual(sorted(ids), self.ids[:5])
+
+    def test_paper_search_and_load_more(self):
+        response = self.client.get("/", {"single_paper": self.ids[0], "date_filter": "1month"})
+        self.assertEqual([r["paper"].id for r in response.context["results"]], self.ids[1:5])
+        response = self.client.post(
+            "/",
+            {"exclude_ids": self.ids[1:3], "query_params": {"single_paper": str(self.ids[0]), "date_filter": "1month"}},
+            content_type="application/json",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        html = response.json()["html"]
+        self.assertEqual([pid for pid in self.ids if f'data-paper-id="{pid}"' in html], self.ids[3:5])

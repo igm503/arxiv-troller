@@ -1,10 +1,11 @@
 import json
 import re
 from datetime import timedelta
+from functools import lru_cache
 import random
 import time
 
-from django.db.models import F, Func, FloatField
+from django.db.models import Count, F, Func, FloatField
 from django.contrib.postgres.search import SearchQuery
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
@@ -34,52 +35,54 @@ else:
     DISTANCE_FUNCTION = L2Distance
 RESULTS_PER_PAGE = 20
 MAX_RESULTS = 400
+DRAWER_SORTS = {"alpha": "paper__title", "submitted": "-paper__created", "updated": "-paper__updated"}
 
 
+def link_bare_url(match):
+    return f'<a href="{match.group(1)}" target="_blank">{match.group(1)}</a>{match.group(2) or ""}'
+
+
+# Applied in order; later rules see the output of earlier ones
+LATEX_RULES = [
+    (re.compile(pattern), replacement)
+    for pattern, replacement in [
+        # Text formatting commands
+        (r"\\textbf\{([^}]+)\}", r"<strong>\1</strong>"),
+        (r"\\textit\{([^}]+)\}", r"<em>\1</em>"),
+        (r"\\emph\{([^}]+)\}", r"<em>\1</em>"),
+        (r"\\texttt\{([^}]+)\}", r"<code>\1</code>"),
+        (r"\\underline\{([^}]+)\}", r"<u>\1</u>"),
+        # URLs and hrefs
+        (r"\\url\{([^}]+)\}", r'<a href="\1" target="_blank">\1</a>'),
+        (r"\\href\{([^}]+)\}\{([^}]+)\}", r'<a href="\1" target="_blank">\2</a>'),
+        (r'(?<!href=")(?<!">)(https?://[^\s<>"]+?)(\.)?(?=\s|$)', link_bare_url),
+        # Special characters and escapes
+        (r"\\%", "%"),
+        (r"\\&", "&"),
+        (r"\\\$", "$"),
+        (r"\\#", "#"),
+        (r"\\_", "_"),
+        (r"\\\{", "{"),
+        (r"\\\}", "}"),
+        (r"\\textbackslash(?:\{\})?", r"\\"),
+        (r"\\~", "~"),
+        (r"\\\^", "^"),
+        # LaTeX quotes
+        (r"``", '"'),
+        (r"''", '"'),
+        (r"`", "\u2018"),
+        # Common spacing commands
+        (r"\\,", " "),
+        (r"~", "&nbsp;"),
+        (r"\\\\", "<br>"),
+    ]
+]
+
+
+@lru_cache(maxsize=8192)
 def process_latex_commands(text):
-    # Text formatting commands
-    text = re.sub(r"\\textbf\{([^}]+)\}", r"<strong>\1</strong>", text)
-    text = re.sub(r"\\textit\{([^}]+)\}", r"<em>\1</em>", text)
-    text = re.sub(r"\\emph\{([^}]+)\}", r"<em>\1</em>", text)
-    text = re.sub(r"\\texttt\{([^}]+)\}", r"<code>\1</code>", text)
-    text = re.sub(r"\\underline\{([^}]+)\}", r"<u>\1</u>", text)
-
-    # URLs and hrefs
-    text = re.sub(r"\\url\{([^}]+)\}", r'<a href="\1" target="_blank">\1</a>', text)
-    text = re.sub(r"\\href\{([^}]+)\}\{([^}]+)\}", r'<a href="\1" target="_blank">\2</a>', text)
-    text = re.sub(
-        r'(?<!href=")(?<!">)(https?://[^\s<>"]+?)(\.)?(?=\s|$)',
-        lambda m: f'<a href="{m.group(1)}" target="_blank">{m.group(1)}</a>{m.group(2) if m.group(2) else ""}',
-        text,
-    )
-
-    # Special characters and escapes
-    text = re.sub(r"\\%", "%", text)
-    text = re.sub(r"\\&", "&", text)
-    text = re.sub(r"\\\$", "$", text)
-    text = re.sub(r"\\#", "#", text)
-    text = re.sub(r"\\_", "_", text)
-    text = re.sub(r"\\\{", "{", text)
-    text = re.sub(r"\\\}", "}", text)
-    text = re.sub(r"\\textbackslash(?:\{\})?", r"\\", text)
-    text = re.sub(r"\\~", "~", text)
-    text = re.sub(r"\\\^", "^", text)
-
-    # LaTeX quotes
-    text = re.sub(r"``", '"', text)
-    text = re.sub(r"''", '"', text)
-    text = re.sub(
-        r"`",
-        """, text)
-    text = re.sub(r"'", """,
-        text,
-    )
-
-    # Common spacing commands
-    text = re.sub(r"\\,", " ", text)
-    text = re.sub(r"~", "&nbsp;", text)
-    text = re.sub(r"\\\\", "<br>", text)
-
+    for pattern, replacement in LATEX_RULES:
+        text = pattern.sub(replacement, text)
     return text
 
 
@@ -100,6 +103,29 @@ def get_date_cutoff(date_filter):
         "2years": now - timedelta(days=730),
     }
     return date_cutoffs.get(date_filter)
+
+
+def get_user_tags(user):
+    """The user's tags, each annotated with paper_count"""
+    return Tag.objects.filter(user=user).annotate(paper_count=Count("tagged_papers"))
+
+
+def tag_drawer_papers(tag, sort):
+    """Papers in a tag, sorted for the tag drawer, with LaTeX processed in titles"""
+    tagged_papers = (
+        TaggedPaper.objects.filter(tag=tag)
+        .select_related("paper")
+        .only("added_at", "paper__arxiv_id", "paper__title")
+        .order_by(DRAWER_SORTS.get(sort, "-added_at"))
+    )
+    return [
+        {
+            "paper": tagged.paper,
+            "processed_title": process_latex_commands(tagged.paper.title),
+            "added_at": tagged.added_at,
+        }
+        for tagged in tagged_papers
+    ]
 
 
 def search(request):
@@ -168,15 +194,8 @@ def search(request):
         "parsed_tag_for_search": parsed_tag_for_search,  # Pass to context for search functions
     }
 
-    with connection.cursor() as cursor:
-        cursor.execute("SET hnsw.ef_search = 256")
-        cursor.execute("SET hnsw.iterative_scan = 'relaxed_order'")
-        cursor.execute("SET hnsw.max_scan_tuples = 1000")
-
     if request.user.is_authenticated:
-        context["user_tags"] = Tag.objects.filter(user=request.user).prefetch_related(
-            "tagged_papers"
-        )
+        context["user_tags"] = get_user_tags(request.user)
 
     # Set current_tag from URL parameter ONLY (for drawer state)
     current_tag_id = query_params.get("tag")
@@ -185,30 +204,9 @@ def search(request):
 
         # Load drawer content
         if not is_ajax:
-            sort = request.GET.get("sort", "added")
-            tagged_papers = TaggedPaper.objects.filter(tag=context["current_tag"]).select_related(
-                "paper"
+            context["tagged_papers"] = tag_drawer_papers(
+                context["current_tag"], request.GET.get("sort", "added")
             )
-            if sort == "alpha":
-                tagged_papers = tagged_papers.order_by("paper__title")
-            elif sort == "submitted":
-                tagged_papers = tagged_papers.order_by("-paper__created")
-            elif sort == "updated":
-                tagged_papers = tagged_papers.order_by("-paper__updated")
-            else:  # added (default)
-                tagged_papers = tagged_papers.order_by("-added_at")
-
-            # Process LaTeX in titles for drawer
-            tagged_papers_processed = []
-            for tagged in tagged_papers:
-                tagged_papers_processed.append(
-                    {
-                        "paper": tagged.paper,
-                        "processed_title": process_latex_commands(tagged.paper.title),
-                        "added_at": tagged.added_at,
-                    }
-                )
-            context["tagged_papers"] = tagged_papers_processed
 
     if not context["date_filter"]:
         context["date_filter"] = "1week"
@@ -394,8 +392,7 @@ def tag_search(context):
         "tag": tag,  # Include tag in search context so template can show which tag was searched
     }
 
-    tagged_papers = TaggedPaper.objects.filter(tag=tag).select_related("paper")
-    tagged_papers = [tagged.paper for tagged in tagged_papers]
+    tagged_papers = list(Paper.objects.filter(taggedpaper__tag=tag).only("id"))
 
     if not tagged_papers:
         return [], search_context
@@ -409,41 +406,38 @@ def tag_search(context):
     res_per_source = max(1, total_needed // max(1, len(tagged_papers))) + 1
     # we won't use more than 10 results per source
 
+    # Collect IDs from each source paper, then fetch all the papers in one query
     results = []
-    seen_papers = set()
-    count = 0
+    seen_ids = set()
     start_time = time.time()
     for paper in tagged_papers:
         if time.time() - start_time > 2:  # need to finish before timeout
             res_per_source = total_needed
-        similars = get_similar_embeddings(paper, valid_paper_query, res_per_source, filters)
-        new_similars = []
+        new_ids = [
+            pid
+            for pid in similar_paper_ids(paper, valid_paper_query, res_per_source, filters)
+            if pid not in seen_ids
+        ]
+        seen_ids.update(new_ids)
 
-        for similar in similars:
-            if similar.id not in seen_papers:
-                new_similars.append(similar)
-                seen_papers.add(similar.id)
-                count += 1
+        if new_ids:
+            results.append(new_ids)
 
-        if new_similars:
-            results.append(new_similars)
-
-        if count >= total_needed:
-            print("breaking")
+        if len(seen_ids) >= total_needed:
             break
 
-    papers = []
+    ids = []
     for i in range(res_per_source):
         for result_group in results:
             if len(result_group) > i:
-                papers.append(result_group[i])
+                ids.append(result_group[i])
 
-    return papers, search_context
+    return papers_in_order(valid_paper_query, ids), search_context
 
 
 def paper_detail(request, paper_id):
     """Display paper details with option to search similar from here"""
-    paper = get_object_or_404(Paper, id=paper_id)
+    paper = get_object_or_404(Paper.objects.defer("search_vector"), id=paper_id)
 
     authors = (
         paper.authors.through.objects.filter(paper=paper).select_related("author").order_by("order")
@@ -460,33 +454,11 @@ def paper_detail(request, paper_id):
     paper_tags = []
 
     if request.user.is_authenticated:
-        user_tags = Tag.objects.filter(user=request.user).prefetch_related("tagged_papers")
+        user_tags = get_user_tags(request.user)
         if tag_id:
             current_tag = Tag.objects.filter(id=tag_id, user=request.user).first()
             if current_tag:
-                # Get tagged papers for drawer
-                sort = request.GET.get("sort", "added")
-                tagged_papers_qs = TaggedPaper.objects.filter(tag=current_tag).select_related(
-                    "paper"
-                )
-                if sort == "alpha":
-                    tagged_papers_qs = tagged_papers_qs.order_by("paper__title")
-                elif sort == "submitted":
-                    tagged_papers_qs = tagged_papers_qs.order_by("-paper__created")
-                elif sort == "updated":
-                    tagged_papers_qs = tagged_papers_qs.order_by("-paper__updated")
-                else:  # added (default)
-                    tagged_papers_qs = tagged_papers_qs.order_by("-added_at")
-
-                # Process LaTeX in titles for drawer
-                for tagged in tagged_papers_qs:
-                    tagged_papers.append(
-                        {
-                            "paper": tagged.paper,
-                            "processed_title": process_latex_commands(tagged.paper.title),
-                            "added_at": tagged.added_at,
-                        }
-                    )
+                tagged_papers = tag_drawer_papers(current_tag, request.GET.get("sort", "added"))
 
         # Get tags for this specific paper
         paper_tag_objs = TaggedPaper.objects.filter(
@@ -523,7 +495,8 @@ def get_valid_papers(context, current_paper=None):
     if current_paper is not None:
         excluded_ids.add(current_paper.id)
 
-    paper_query = Paper.objects.exclude(id__in=excluded_ids)
+    # The full-text vector is only used in WHERE/ORDER BY, never displayed
+    paper_query = Paper.objects.defer("search_vector").exclude(id__in=excluded_ids)
     date_cutoff = get_date_cutoff(context["date_filter"])
     if date_cutoff:
         paper_query = paper_query.filter(created__gte=date_cutoff)
@@ -534,19 +507,30 @@ def get_valid_papers(context, current_paper=None):
     return paper_query, filters
 
 
-def get_similar_embeddings(paper, valid_paper_query, num_results, filters):
+def similar_paper_ids(paper, valid_paper_query, num_results, filters):
+    """IDs of the papers most similar to paper, nearest first"""
     if EMBEDDING_MODEL is EmbeddingVoyage4:
-        ids = voyage4_search.similar_ids(paper.id, limit=num_results, **filters)
-        found = {p.id: p for p in valid_paper_query.filter(id__in=ids).prefetch_related("authors")}
-        return [found[pid] for pid in ids if pid in found]
+        return voyage4_search.similar_ids(paper.id, limit=num_results, **filters)
     embedding = EMBEDDING_MODEL.objects.filter(paper=paper).first()
     if not embedding:
         return []
-    similar_embeddings = list(
+    with connection.cursor() as cursor:
+        cursor.execute("SET hnsw.ef_search = 256")
+        cursor.execute("SET hnsw.iterative_scan = 'relaxed_order'")
+        cursor.execute("SET hnsw.max_scan_tuples = 1000")
+    return list(
         EMBEDDING_MODEL.objects.filter(paper__in=valid_paper_query)
         .annotate(distance=DISTANCE_FUNCTION("vector", embedding.vector))
-        .select_related("paper")
-        .prefetch_related("paper__authors")
-        .order_by("distance")[:num_results]
+        .order_by("distance")
+        .values_list("paper_id", flat=True)[:num_results]
     )
-    return [emb.paper for emb in similar_embeddings]
+
+
+def papers_in_order(valid_paper_query, ids):
+    found = {p.id: p for p in valid_paper_query.filter(id__in=ids).prefetch_related("authors")}
+    return [found[pid] for pid in ids if pid in found]
+
+
+def get_similar_embeddings(paper, valid_paper_query, num_results, filters):
+    ids = similar_paper_ids(paper, valid_paper_query, num_results, filters)
+    return papers_in_order(valid_paper_query, ids)
