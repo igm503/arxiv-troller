@@ -527,10 +527,20 @@ def get_valid_papers(context, current_paper=None):
     if context["category_filter"]:
         paper_query = paper_query.filter(categories__contains=[context["category_filter"]])
 
+    paper_query._voyage4_filters = dict(cutoff=date_cutoff, category=context["category_filter"], excluded=set(excluded_ids))
     return paper_query
 
 
 def get_similar_embeddings(paper, valid_paper_query, num_results):
+    from .voyage4_search import search_ids
+
+    filters = getattr(valid_paper_query, "_voyage4_filters", None)
+    if filters is not None:
+        ids = search_ids(paper.id, limit=num_results, **filters)
+        if ids is not None:
+            # Recheck the original queryset to preserve every application-level exclusion.
+            found = {p.id: p for p in valid_paper_query.filter(id__in=ids).prefetch_related("authors")}
+            return [found[pid] for pid in ids if pid in found]
     embedding = EMBEDDING_MODEL.objects.filter(paper=paper).first()
     if not embedding:
         return []

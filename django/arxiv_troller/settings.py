@@ -139,3 +139,6 @@ STATIC_ROOT = os.path.join(BASE_DIR, os.pardir, "static")
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Enable only after the separate Voyage 4 archive and indexes are verified.
+VOYAGE4_ENABLED = os.getenv("VOYAGE4_ENABLED", "0") == "1"

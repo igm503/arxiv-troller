@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly Voyage 4 ingestion and rolling-index maintenance
+
+[Timer]
+OnCalendar=*-*-* *:20:00
+Persistent=true
+Unit=arxiv-voyage4-maintain.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,20 @@
+[Unit]
+Description=Import saved Voyage 4 originals into separate search tables
+After=postgresql.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=arxiv
+Group=arxiv
+WorkingDirectory=/home/arxiv/arxiv_troller
+Environment=OPENBLAS_NUM_THREADS=1
+ExecStart=/bin/bash /home/arxiv/arxiv_troller/operations/voyage4/load-backfill.sh
+Restart=on-failure
+RestartSec=120
+Nice=10
+TimeoutStopSec=180
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target

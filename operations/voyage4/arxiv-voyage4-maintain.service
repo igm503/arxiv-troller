@@ -1,0 +1,19 @@
+[Unit]
+Description=Archive new/revised papers and incrementally maintain Voyage 4 rolling search
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=arxiv
+Group=arxiv
+WorkingDirectory=/home/arxiv/arxiv_troller
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=TOKENIZERS_PARALLELISM=true
+Environment=RAYON_NUM_THREADS=2
+Environment=HF_HOME=/tmp/arxiv-voyage4-tokenizer-cache
+ExecStart=/bin/bash /home/arxiv/arxiv_troller/operations/voyage4/maintain.sh
+Nice=10
+TimeoutStartSec=4h
+TimeoutStopSec=180
+KillSignal=SIGINT
