@@ -87,9 +87,11 @@ def similar_ids(paper_id, *, cutoff, category, excluded, limit):
     ef_search = (512 if category else 128) if recent else GENERAL_EF
     with transaction.atomic(), connection.cursor() as q:
         # SET LOCAL keeps these search settings from leaking into other requests
-        q.execute("SET LOCAL hnsw.iterative_scan = 'relaxed_order'")
-        q.execute(f"SET LOCAL hnsw.ef_search = {ef_search}")
-        q.execute("SET LOCAL hnsw.max_scan_tuples = 20000")
+        q.execute(
+            "SET LOCAL hnsw.iterative_scan = 'relaxed_order';"
+            f"SET LOCAL hnsw.ef_search = {ef_search};"
+            "SET LOCAL hnsw.max_scan_tuples = 20000"
+        )
         q.execute(*query_sql(**args))
         ids = [row[0] for row in q.fetchall()]
         if len(ids) < limit:
