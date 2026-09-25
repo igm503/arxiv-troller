@@ -512,7 +512,8 @@ def get_valid_papers(context, current_paper=None):
 
     # The full-text vector is only used in WHERE/ORDER BY, never displayed
     paper_query = Paper.objects.defer("search_vector").exclude(id__in=excluded_ids)
-    date_cutoff = get_date_cutoff(context["date_filter"])
+    # The API passes an exact cutoff as "since" (None for all time); the site uses a preset
+    date_cutoff = context["since"] if "since" in context else get_date_cutoff(context["date_filter"])
     if date_cutoff:
         paper_query = paper_query.filter(created__gte=date_cutoff)
     if context["category_filter"]:

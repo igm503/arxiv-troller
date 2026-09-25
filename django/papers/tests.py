@@ -244,3 +244,80 @@ class PageTests(TestCase):
         )
         html = response.json()["html"]
         self.assertEqual([pid for pid in self.ids if f'data-paper-id="{pid}"' in html], self.ids[3:5])
+
+
+class IngestionApiTests(TestCase):
+    def setUp(self):
+        PageTests.setUp(self)
+        self.tag = PageTests.login_with_tag(self, self.papers[:2])
+
+    def get(self, **params):
+        return self.client.get("/api/ingestion/", params)
+
+    def post(self, **body):
+        return self.client.post("/api/ingestion/", body, content_type="application/json")
+
+    def arxiv_ids(self, response):
+        return [p["arxiv_id"] for p in response.json()["papers"]]
+
+    def test_requires_login_and_valid_actions(self):
+        self.assertEqual(self.get(action="unknown").status_code, 400)
+        self.assertEqual(self.get(action="bulk_add").status_code, 405)
+        self.assertEqual(self.post(action="tags").status_code, 405)
+        self.client.logout()
+        self.assertEqual(self.get(action="tags").status_code, 401)
+
+    def test_tags_tag_and_papers(self):
+        self.assertEqual(self.get(action="tags").json()["tags"], [{"id": self.tag.id, "name": "reading"}])
+        self.assertEqual(self.arxiv_ids(self.get(action="tag", tag="reading")), ["test0", "test1"])
+        since = (timezone.now() - timedelta(days=3, hours=12)).isoformat()
+        self.assertEqual(self.arxiv_ids(self.get(action="papers", since=since)), ["test0", "test1", "test2"])
+        self.assertEqual(self.get(action="papers", since="2026-01-01T00:00:00").status_code, 400)
+
+    def test_search_types_mirror_the_site(self):
+        month = (timezone.now() - timedelta(days=30)).isoformat()
+        cases = [
+            (dict(type="keyword", q="abstract", date_filter="all"), 6),
+            (dict(type="title", q="Paper", since=month), ["test0", "test1", "test2", "test3", "test4"]),
+            (dict(type="paper", paper="test0", date_filter="1month"), ["test1", "test2", "test3", "test4"]),
+            (dict(type="paper", paper="test0", date_filter="1month", category="cs.LG"), ["test1", "test3", "test4"]),
+        ]
+        for params, expected in cases:
+            response = self.get(action="search", **params)
+            ids = self.arxiv_ids(response)
+            if isinstance(expected, int):
+                self.assertEqual(len(ids), expected, params)
+            else:
+                self.assertEqual(ids, expected, params)
+        response = self.get(action="search", type="tag", tag="reading", since=month).json()
+        self.assertEqual(sorted(p["arxiv_id"] for p in response["papers"]), ["test2", "test3", "test4"])
+        self.assertEqual(response["search"], {"type": "tag", "since": month, "category": ""})
+
+    def test_search_pages_without_repeating_papers(self):
+        first = self.get(action="search", type="paper", paper="test0", date_filter="all").json()
+        self.assertEqual(len(first["papers"]), 5)
+        second = self.get(action="search", type="paper", paper="test0", date_filter="all", cursor=first["next_cursor"]).json()
+        self.assertEqual((second["papers"], second["next_cursor"]), ([], None))
+
+    def test_search_rejects_bad_input(self):
+        for params in [dict(type="nope", q="x"), dict(type="keyword", q=" "), dict(type="paper", paper="missing"),
+                       dict(type="tag", tag="missing"), dict(type="title", q="x", since="2026-01-01T00:00:00+00:00", date_filter="all"),
+                       dict(type="title", q="x", date_filter="5years"), dict(type="title", q="x", cursor="%%%")]:
+            self.assertEqual(self.get(action="search", **params).status_code, 400, params)
+
+    def test_similar_excludes_tagged_papers_and_uses_created(self):
+        since = timezone.now() - timedelta(days=4, hours=12)
+        Paper.objects.filter(id=self.ids[5]).update(updated=timezone.now())
+        response = self.get(action="similar", tag="reading", since=since.isoformat()).json()
+        self.assertEqual(sorted(p["arxiv_id"] for p in response["papers"]), ["test2", "test3"])
+        self.assertIsNone(response["next_cursor"])
+
+    def test_bulk_add_bulk_remove_and_copy_tag(self):
+        response = self.post(action="bulk_add", tag="new", arxiv_ids=["test2", "test3", "nope"]).json()
+        self.assertEqual((response["count"], response["missing"]), (2, ["nope"]))
+        response = self.post(action="bulk_remove", tag="new", arxiv_ids=["test2", "nope"]).json()
+        self.assertEqual((response["count"], response["missing"]), (1, ["nope"]))
+        self.assertEqual(self.arxiv_ids(self.get(action="tag", tag="new")), ["test3"])
+        self.assertEqual(self.post(action="copy_tag", source="reading", target="new").json()["count"], 3)
+        self.assertEqual(self.post(action="bulk_remove", tag="missing", arxiv_ids=[]).status_code, 400)
+        self.assertEqual(self.post(action="bulk_add", tag="new", arxiv_ids=["x"] * 201).status_code, 400)

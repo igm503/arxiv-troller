@@ -1,9 +1,10 @@
 from django.urls import path
-from . import views, views_auth
+from . import views, views_auth, ingestion_api
 
 app_name = "papers"
 
 urlpatterns = [
+    path("api/ingestion/", ingestion_api.api, name="ingestion_api"),
     path("", views.search, name="search"),
     path("login/", views_auth.login_view, name="login"),
     path("logout/", views_auth.logout_view, name="logout"),
