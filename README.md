@@ -16,9 +16,11 @@ This tool helps researchers manage the overwhelming flow of papers on arXiv by p
 
 ### Search Modes
 
-The application supports three complementary search approaches:
+The application supports four complementary search approaches:
 
-**Keyword Search**: Traditional title-based search with date and category filters
+**Keyword Search**: Full-text search over titles and abstracts, with date and category filters
+
+**Title Search**: Substring search over titles (`title: ...` in the search box)
 
 **Single Paper Similarity**: Find papers semantically similar to a specific paper 
 
@@ -33,10 +35,10 @@ The application supports three complementary search approaches:
 ### Filtering
 
 All search modes support filtering by:
-- **Time period**: Last week, month, 3/6/12/24 months, or all time
+- **Time period**: Last day, 3 days, week, month, 3/6/12 months, or all time
 - **arXiv category**: Filter to specific research areas (cs.LG, cs.AI, etc.)
 
-Default filters differ by search type. Keyword searches default to "all time" since you're looking for specific content. Similarity searches default to "last week" since you're typically looking for recent related work.
+All searches default to the last week.
 
 ## How It Works
 
@@ -56,6 +58,32 @@ When you search for papers similar to a single paper, the system:
 5. Returns the closest matches ordered by semantic similarity
 
 When searching based on a tag collection, the system queries for similar papers from each tagged paper independently, then interleaves the results. This prevents one paper from dominating recommendations. 
+
+## API
+
+A JSON API at `/api/ingestion/` exposes the same search and tags as the site. It uses the site's session login: send the `sessionid` cookie, and for POSTs also the `csrftoken` cookie plus an `X-CSRFToken` header. Pick an operation with `action`. Reads are GET with query parameters; writes are POST with a JSON body.
+
+| Action | Method | Parameters | Returns |
+|---|---|---|---|
+| `tags` | GET | | your tags: `[{id, name}]` |
+| `tag` | GET | `tag`, `cursor` | papers in a tag, by arXiv ID, 100 per page |
+| `papers` | GET | `since`, `cursor` | papers created or updated since `since`, newest first, 100 per page |
+| `search` | GET | `type`, then `q` (keyword, title), `paper` (arXiv ID) or `tag`; optional `since` or `date_filter`, `category`, `cursor` | the site's search, 20 per page, up to 400 results |
+| `similar` | GET | `tag`, `since`, `cursor` | for five tagged papers per page, each one's 20 nearest papers created since `since` |
+| `bulk_add` | POST | `tag`, `arxiv_ids` (up to 200) | adds papers to a tag, creating it if needed |
+| `bulk_remove` | POST | `tag`, `arxiv_ids` (up to 200) | removes papers from a tag |
+| `copy_tag` | POST | `source`, `target` | adds every paper in `source` to `target` |
+
+- `search` types match the site's search modes: `keyword`, `title`, `paper` (similar to one paper) and `tag` (similar to a tag's papers, never returning papers already in the tag). Tag search samples the tag's papers randomly, so repeated calls can differ.
+- `since` is an ISO 8601 time with a timezone, e.g. `2026-09-01T00:00:00+00:00`. For `search`, pass either `since` or a site `date_filter` (`1day`, `3day`, `1week`, `1month`, `3months`, `6months`, `1year`, `2years`, `all`); the default is `1week`.
+- Papers are returned as `{arxiv_id, title, abstract, created, updated, categories}`.
+- Lists include `next_cursor`: pass it back as `cursor` for the next page. It is `null` on the last page.
+- Writes return `{tag, count, missing}`, where `missing` lists arXiv IDs that aren't in the database.
+- Errors return `{"ok": false, "error": ...}` with status 400 (bad input), 401 (not logged in) or 405 (wrong method).
+
+```bash
+curl -b "sessionid=$SESSION" "https://arxiv-troller.com/api/ingestion/?action=search&type=tag&tag=backbones&since=2026-09-01T00:00:00%2B00:00"
+```
 
 ## Local Installation
 
