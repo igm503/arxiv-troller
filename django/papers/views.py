@@ -107,7 +107,12 @@ def get_date_cutoff(date_filter):
 
 def get_user_tags(user):
     """The user's tags, each annotated with paper_count"""
-    return Tag.objects.filter(user=user).annotate(paper_count=Count("tagged_papers"))
+    # Meta.ordering is not applied to aggregate queries, so order explicitly
+    return (
+        Tag.objects.filter(user=user)
+        .annotate(paper_count=Count("tagged_papers"))
+        .order_by("name")
+    )
 
 
 def tag_drawer_papers(tag, sort):

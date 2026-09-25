@@ -121,7 +121,8 @@ LANGUAGE_CODE = "en-us"
 
 TIME_ZONE = "UTC"
 
-USE_I18N = True
+# The site is English only; disabling translation speeds up template rendering
+USE_I18N = False
 
 USE_TZ = True
 

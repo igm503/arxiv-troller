@@ -181,8 +181,12 @@ class PageTests(TestCase):
 
     def test_tag_counts_and_drawer_on_search_and_detail_pages(self):
         tag = self.login_with_tag(self.papers[:2])
+        Tag.objects.create(user=tag.user, name="zzz")
+        Tag.objects.create(user=tag.user, name="aaa")
         response = self.client.get("/", {"tag": tag.id})
-        self.assertContains(response, "reading (2)")
+        html = response.content.decode()
+        self.assertLess(html.index("aaa (0)"), html.index("reading (2)"))
+        self.assertLess(html.index("reading (2)"), html.index("zzz (0)"))
         self.assertEqual([t["paper"].id for t in response.context["tagged_papers"]], self.ids[1::-1])
         response = self.client.get(f"/paper/{self.ids[2]}/", {"tag": tag.id, "sort": "alpha"})
         self.assertEqual([t["paper"].id for t in response.context["tagged_papers"]], self.ids[:2])
