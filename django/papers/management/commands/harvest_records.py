@@ -11,6 +11,11 @@ from django.db.models import Max
 from papers.models import Paper, Author, PaperAuthor
 
 
+def was_misdecoded_as_latin1(stored, source):
+    """Recognize UTF-8 arXiv metadata previously decoded as Latin-1."""
+    return stored != source and stored == source.encode("utf-8").decode("latin-1")
+
+
 class Command(BaseCommand):
     help = "Harvest arXiv metadata and save to database"
 
@@ -26,7 +31,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         total = 0
         base_url = "https://oaipmh.arxiv.org/oai?verb=ListRecords"
-        url = f"{base_url}&metadataprefix=arxiv"
+        url = f"{base_url}&metadataPrefix=arXiv"
         last_date = None
 
         recent = options["recent_only"]
@@ -40,7 +45,7 @@ class Command(BaseCommand):
             while True:
                 try:
                     response = requests.get(url)
-                    xml_response = response.text.strip()
+                    xml_response = response.content.strip()
                     metadata = xmltodict.parse(xml_response)
 
                     for item in metadata["OAI-PMH"]["ListRecords"]["record"]:
@@ -111,6 +116,16 @@ class Command(BaseCommand):
                 "categories": categories,
             },
         )
+
+        if not created:
+            repaired_fields = []
+            for field in ("title", "abstract"):
+                source = data[field]
+                if was_misdecoded_as_latin1(getattr(paper, field), source):
+                    setattr(paper, field, source)
+                    repaired_fields.append(field)
+            if repaired_fields:
+                paper.save(update_fields=repaired_fields)
 
         if created:
             if isinstance(data["authors"], list):
