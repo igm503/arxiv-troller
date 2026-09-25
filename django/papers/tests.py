@@ -204,11 +204,34 @@ class PageTests(TestCase):
         html = self.client.get("/ajax/get-tag-drawer/", {"tag_id": empty.id}).json()["papers_html"]
         self.assertIn("No papers tagged yet", html)
 
-    def test_tag_search_returns_neighbours_of_tagged_papers(self):
+    def test_tag_search_returns_neighbours_but_never_tagged_papers(self):
         self.login_with_tag(self.papers[:2])
-        response = self.client.get("/", {"q": "tag: reading", "date_filter": "1month"})
-        ids = [r["paper"].id for r in response.context["results"]]
-        self.assertEqual(sorted(ids), self.ids[:5])
+        # With the drawer closed and open, the tag's own papers are excluded
+        for params in [{}, {"tag": Tag.objects.get(name="reading").id}]:
+            response = self.client.get("/", {"q": "tag: reading", "date_filter": "1month", **params})
+            ids = [r["paper"].id for r in response.context["results"]]
+            self.assertEqual(sorted(ids), self.ids[2:5])
+
+    def test_tag_search_skips_similarity_when_window_is_empty(self):
+        self.login_with_tag(self.papers[:2])
+        with patch.object(voyage4_search, "similar_ids") as similar_ids:
+            response = self.client.get("/", {"q": "tag: reading", "date_filter": "1day"})
+        self.assertEqual(response.context["results"], [])
+        similar_ids.assert_not_called()
+
+    def test_tag_search_forces_hnsw_only_for_unfiltered_recent_windows(self):
+        args = dict(cutoff=timezone.now(), excluded=set(), limit=2, vector="[1]", bits="1")
+        hidden = "e.created + interval '0' >= %s"
+        sql = lambda **kw: voyage4_search.query_sql(**{**args, **kw})[0]
+        self.assertIn(hidden, sql(recent=True, category="", prefer_hnsw=True))
+        self.assertNotIn(hidden, sql(recent=True, category="", prefer_hnsw=False))
+        self.assertNotIn(hidden, sql(recent=True, category="cs.LG", prefer_hnsw=True))
+        self.assertNotIn(hidden, sql(recent=False, category="", prefer_hnsw=True))
+        self.assertNotIn(hidden, sql(recent=True, category="", prefer_hnsw=True, exact=True))
+        self.login_with_tag(self.papers[:2])
+        with patch.object(voyage4_search, "query_sql", wraps=voyage4_search.query_sql) as query_sql:
+            self.client.get("/", {"q": "tag: reading", "date_filter": "1week"})
+        self.assertTrue(query_sql.call_args_list[0].kwargs["prefer_hnsw"])
 
     def test_paper_search_and_load_more(self):
         response = self.client.get("/", {"single_paper": self.ids[0], "date_filter": "1month"})

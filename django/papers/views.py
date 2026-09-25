@@ -405,6 +405,16 @@ def tag_search(context):
     random.shuffle(tagged_papers)
 
     valid_paper_query, filters = get_valid_papers(context)
+    # Results never include papers that are already in the searched tag
+    tagged_ids = {paper.id for paper in tagged_papers}
+    valid_paper_query = valid_paper_query.exclude(id__in=tagged_ids)
+    filters["excluded"] |= tagged_ids
+    # Tag search asks for only a few neighbours per paper, where HNSW recall matches exact search
+    filters["prefer_hnsw"] = True
+
+    # Skip the per-paper searches when nothing is left in the date window
+    if not valid_paper_query.exists():
+        return [], search_context
 
     # Calculate papers per source - need enough to cover offset + page + 1
     total_needed = RESULTS_PER_PAGE

@@ -19,10 +19,11 @@ GENERAL_EF = 1000
 GENERAL_CANDIDATES = 500
 
 
-def predicate(cutoff, category, excluded):
+def predicate(cutoff, category, excluded, date_index=True):
     terms, params = [], []
     if cutoff is not None:
-        terms.append("e.created >= %s")
+        # Adding a zero interval hides the filter from the created index, so the planner uses HNSW
+        terms.append("e.created >= %s" if date_index else "e.created + interval '0' >= %s")
         params.append(cutoff)
     if category:
         terms.append("e.categories @> ARRAY[%s]::varchar[]")
@@ -33,8 +34,11 @@ def predicate(cutoff, category, excluded):
     return " AND ".join(terms) or "TRUE", params
 
 
-def query_sql(*, recent, cutoff, category, excluded, limit, vector, bits, exact=False):
-    where, params = predicate(cutoff, category, excluded)
+def query_sql(*, recent, cutoff, category, excluded, limit, vector, bits, exact=False, prefer_hnsw=False):
+    # For short windows the planner picks an exact scan of the whole window via the created index.
+    # prefer_hnsw forces the HNSW scan instead: much faster, but slightly lower recall at 20 results.
+    date_index = exact or category or not (recent and prefer_hnsw)
+    where, params = predicate(cutoff, category, excluded, date_index)
     table = RECENT_TABLE if recent else ALL_TABLE
     if exact:
         sql = f"""SELECT e.paper_id FROM {table} e WHERE {where}
@@ -66,7 +70,7 @@ def query_sql(*, recent, cutoff, category, excluded, limit, vector, bits, exact=
     return sql, [bits] + params + [max(GENERAL_CANDIDATES, limit * 5), vector, limit]
 
 
-def similar_ids(paper_id, *, cutoff, category, excluded, limit):
+def similar_ids(paper_id, *, cutoff, category, excluded, limit, prefer_hnsw=False):
     """Return the IDs of the most similar papers, nearest first."""
     with connection.cursor() as q:
         q.execute(f"SELECT vector::text, bits::text FROM {ALL_TABLE} WHERE paper_id = %s", [paper_id])
@@ -83,6 +87,7 @@ def similar_ids(paper_id, *, cutoff, category, excluded, limit):
         limit=limit,
         vector=vector,
         bits=bits,
+        prefer_hnsw=prefer_hnsw,
     )
     ef_search = (512 if category else 128) if recent else GENERAL_EF
     with transaction.atomic(), connection.cursor() as q:
