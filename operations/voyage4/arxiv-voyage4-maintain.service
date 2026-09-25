@@ -1,5 +1,5 @@
 [Unit]
-Description=Archive new/revised papers and incrementally maintain Voyage 4 rolling search
+Description=Embed new papers with Voyage 4 and refresh the recent-paper index
 After=network-online.target postgresql.service
 Wants=network-online.target
 
@@ -7,13 +7,8 @@ Wants=network-online.target
 Type=oneshot
 User=arxiv
 Group=arxiv
-WorkingDirectory=/home/arxiv/arxiv_troller
-Environment=OPENBLAS_NUM_THREADS=1
-Environment=TOKENIZERS_PARALLELISM=true
-Environment=RAYON_NUM_THREADS=2
-Environment=HF_HOME=/tmp/arxiv-voyage4-tokenizer-cache
-ExecStart=/bin/bash /home/arxiv/arxiv_troller/operations/voyage4/maintain.sh
+WorkingDirectory=/home/arxiv/arxiv_troller/django
+Environment=DJANGO_SETTINGS_MODULE=arxiv_troller.settings_django_deploy
+ExecStart=/home/arxiv/arxiv_troller/venv/bin/python manage.py add_voyage4_embeddings
 Nice=10
 TimeoutStartSec=4h
-TimeoutStopSec=180
-KillSignal=SIGINT

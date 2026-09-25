@@ -2,7 +2,8 @@ from django.db import models
 from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.search import SearchVectorField
 from django.contrib.auth.models import User
-from pgvector.django import HalfVectorField, BitField
+from django.contrib.postgres.indexes import GinIndex
+from pgvector.django import HalfVectorField, BitField, HnswIndex
 
 
 class Author(models.Model):
@@ -36,6 +37,11 @@ class Paper(models.Model):
 
     def __str__(self):
         return f"{self.arxiv_id}: {self.title[:100]}"
+
+    def delete_embeddings(self):
+        """Drop every embedding of this paper so it is re-embedded from the current abstract."""
+        for model in EMBEDDING_MODELS:
+            model.objects.filter(paper=self).delete()
 
     class Meta:
         ordering = ["-created"]
@@ -72,22 +78,79 @@ class EmbeddingGeminiHalf512(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
-class EmbeddingVoyageHalf2048(models.Model):
+class EmbeddingVoyage3Half2048(models.Model):
     paper = models.OneToOneField(Paper, on_delete=models.CASCADE, primary_key=True)
     vector = HalfVectorField(dimensions=2048)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
-class EmbeddingVoyageHalf256(models.Model):
+class EmbeddingVoyage3Half256(models.Model):
     paper = models.OneToOneField(Paper, on_delete=models.CASCADE, primary_key=True)
     vector = HalfVectorField(dimensions=256)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
-class EmbeddingVoyageBit2048(models.Model):
+class EmbeddingVoyage3Bit2048(models.Model):
     paper = models.OneToOneField(Paper, on_delete=models.CASCADE, primary_key=True)
     vector = BitField(length=2048)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class EmbeddingVoyage4(models.Model):
+    paper = models.OneToOneField(Paper, on_delete=models.CASCADE, primary_key=True)
+    vector = HalfVectorField(dimensions=2048)
+    bits = BitField(length=2048)
+    # Copied from the paper so filtered vector search never joins papers_paper
+    created = models.DateTimeField()
+    categories = ArrayField(models.CharField(max_length=50))
+
+    class Meta:
+        indexes = [
+            HnswIndex(
+                name="v4_bits_hnsw",
+                fields=["bits"],
+                m=32,
+                ef_construction=256,
+                opclasses=["bit_hamming_ops"],
+            ),
+            models.Index(fields=["created"], name="v4_created_idx"),
+            GinIndex(fields=["categories"], name="v4_categories_idx"),
+        ]
+
+
+class EmbeddingVoyage4Recent(models.Model):
+    """Papers from the last RECENT_DAYS, with their own HNSW graph for fast short-window search."""
+
+    RECENT_DAYS = 31
+
+    paper = models.OneToOneField(Paper, on_delete=models.CASCADE, primary_key=True)
+    vector = HalfVectorField(dimensions=2048)
+    created = models.DateTimeField()
+    categories = ArrayField(models.CharField(max_length=50))
+
+    class Meta:
+        indexes = [
+            HnswIndex(
+                name="v4_recent_hnsw",
+                fields=["vector"],
+                m=16,
+                ef_construction=64,
+                opclasses=["halfvec_l2_ops"],
+            ),
+            models.Index(fields=["created"], name="v4_recent_created_idx"),
+            GinIndex(fields=["categories"], name="v4_recent_categories_idx"),
+        ]
+
+
+EMBEDDING_MODELS = [
+    EmbeddingGeminiHalf3072,
+    EmbeddingGeminiHalf512,
+    EmbeddingVoyage3Half2048,
+    EmbeddingVoyage3Half256,
+    EmbeddingVoyage3Bit2048,
+    EmbeddingVoyage4,
+    EmbeddingVoyage4Recent,
+]
 
 
 class Tag(models.Model):

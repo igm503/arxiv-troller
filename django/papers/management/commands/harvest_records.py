@@ -126,6 +126,8 @@ class Command(BaseCommand):
                     repaired_fields.append(field)
             if repaired_fields:
                 paper.save(update_fields=repaired_fields)
+                if "abstract" in repaired_fields:
+                    paper.delete_embeddings()
 
         if created:
             if isinstance(data["authors"], list):

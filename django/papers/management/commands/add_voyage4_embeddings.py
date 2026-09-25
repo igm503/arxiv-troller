@@ -1,23 +1,20 @@
+from datetime import timedelta
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
 from django.core.management.base import BaseCommand
-import numpy as np
+from django.db import connection
+from django.utils import timezone
 from dotenv import load_dotenv
 from voyageai import Client
 
-from papers.models import (
-    Paper,
-    EmbeddingVoyageHalf2048,
-    EmbeddingVoyageHalf256,
-    EmbeddingVoyageBit2048,
-)
+from papers.models import Paper, EmbeddingVoyage4, EmbeddingVoyage4Recent
 from .limiter import RateLimiter
 
 
 class Command(BaseCommand):
-    help = "Generate embeddings for papers"
+    help = "Generate Voyage 4 embeddings for new papers and refresh the recent-paper index"
 
     def __init__(self):
         super().__init__()
@@ -25,7 +22,7 @@ class Command(BaseCommand):
         self.rate_limiter = None  # Will be initialized in handle()
 
     def add_arguments(self, parser):
-        parser.add_argument("--model", default="voyage-3-large", help="Embedding model to use")
+        parser.add_argument("--model", default="voyage-4-large", help="Embedding model to use")
         parser.add_argument("--batch-size", type=int, default=128, help="Batch size for processing")
         parser.add_argument("--workers", type=int, default=4, help="Number of parallel workers")
         parser.add_argument("--rate-limit", type=float, default=1.0, help="API calls per second")
@@ -42,23 +39,22 @@ class Command(BaseCommand):
         batch_size = options["batch_size"]
         num_workers = options["workers"]
 
-        # Initialize rate limiter
         self.rate_limiter = RateLimiter(options["rate_limit"])
 
-        papers_queryset = Paper.objects.filter(embeddingvoyagehalf2048__isnull=True).order_by("id")
-
-        total = papers_queryset.count()
-        self.stdout.write(f"Processing {total} papers with {num_workers} workers")
-        self.stdout.write(f"Rate limit: {options['rate_limit']} calls/second")
+        # The API rejects empty inputs, so blank abstracts are never embedded
+        papers_queryset = (
+            Paper.objects.filter(embeddingvoyage4__isnull=True)
+            .exclude(abstract__regex=r"^\s*$")
+            .order_by("id")
+        )
 
         all_ids = list(papers_queryset.values_list("id", flat=True))
+        self.stdout.write(f"Processing {len(all_ids)} papers with {num_workers} workers")
 
         id_chunks = [all_ids[i : i + batch_size] for i in range(0, len(all_ids), batch_size)]
 
-        self.stdout.write(f"Created {len(id_chunks)} batches")
-
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
-            with tqdm(total=total, desc="Processing papers") as pbar:
+            with tqdm(total=len(all_ids), desc="Processing papers") as pbar:
                 futures = [
                     executor.submit(self.process_batch_by_ids, chunk, model_name, pbar)
                     for chunk in id_chunks
@@ -70,10 +66,14 @@ class Command(BaseCommand):
                     except Exception as e:
                         self.stdout.write(f"Batch failed: {e}")
 
+        self.refresh_recent()
+
     def process_batch_by_ids(self, id_chunk, model_name, pbar):
         """Process a batch of papers by their IDs"""
 
-        batch = list(Paper.objects.filter(id__in=id_chunk).only("id", "abstract"))
+        batch = list(
+            Paper.objects.filter(id__in=id_chunk).only("id", "abstract", "created", "categories")
+        )
 
         if not batch:
             return
@@ -89,29 +89,37 @@ class Command(BaseCommand):
                 texts, model=model_name, input_type=None, output_dimension=2048
             ).embeddings
 
-            embedding_2048_objects = []
-            embedding_256_objects = []
-            embedding_bit2048_objects = []
-            for paper, embedding in zip(batch, embeddings):
-                embedding_2048_objects.append(
-                    EmbeddingVoyageHalf2048(paper=paper, vector=embedding)
-                )
-                embedding_256 = embedding[:256]
-                norm_256 = np.linalg.norm(embedding_256)
-                embedding_256 = embedding_256 / norm_256
-                embedding_256_objects.append(
-                    EmbeddingVoyageHalf256(paper=paper, vector=embedding_256)
-                )
-                embedding_bit = "".join("1" if x > 0 else "0" for x in embedding)
-                embedding_bit2048_objects.append(
-                    EmbeddingVoyageBit2048(paper=paper, vector=embedding_bit)
-                )
-
-            EmbeddingVoyageHalf2048.objects.bulk_create(embedding_2048_objects)
-            EmbeddingVoyageHalf256.objects.bulk_create(embedding_256_objects)
-            EmbeddingVoyageBit2048.objects.bulk_create(embedding_bit2048_objects)
+            EmbeddingVoyage4.objects.bulk_create(
+                [
+                    EmbeddingVoyage4(
+                        paper=paper,
+                        vector=embedding,
+                        bits="".join("1" if x > 0 else "0" for x in embedding),
+                        created=paper.created,
+                        categories=paper.categories,
+                    )
+                    for paper, embedding in zip(batch, embeddings)
+                ]
+            )
             pbar.update(len(batch))
 
         except Exception as e:
             self.stdout.write(f"Batch failed: {e}")
             pbar.update(len(batch))
+
+    def refresh_recent(self):
+        """Drop papers that aged out of the recent index and copy in newly embedded ones."""
+        cutoff = timezone.now() - timedelta(days=EmbeddingVoyage4Recent.RECENT_DAYS)
+        expired, _ = EmbeddingVoyage4Recent.objects.filter(created__lt=cutoff).delete()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                INSERT INTO {EmbeddingVoyage4Recent._meta.db_table} (paper_id, vector, created, categories)
+                SELECT paper_id, vector, created, categories FROM {EmbeddingVoyage4._meta.db_table}
+                WHERE created >= %s
+                ON CONFLICT (paper_id) DO NOTHING
+                """,
+                [cutoff],
+            )
+            added = cursor.rowcount
+        self.stdout.write(f"Recent index: {added} added, {expired} expired")

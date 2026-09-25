@@ -21,12 +21,13 @@ from .models import (
     TaggedPaper,
     EmbeddingGeminiHalf3072,
     EmbeddingGeminiHalf512,
-    EmbeddingVoyageHalf2048,
-    EmbeddingVoyageBit2048,
-    EmbeddingVoyageHalf256,
+    EmbeddingVoyage3Half2048,
+    EmbeddingVoyage3Bit2048,
+    EmbeddingVoyage3Half256,
+    EmbeddingVoyage4,
 )
 
-EMBEDDING_MODEL = EmbeddingVoyageBit2048
+EMBEDDING_MODEL = EmbeddingVoyage4
 if "Bit" in EMBEDDING_MODEL.__name__:
     DISTANCE_FUNCTION = HammingDistance
 else:
@@ -447,7 +448,7 @@ def paper_detail(request, paper_id):
     authors = (
         paper.authors.through.objects.filter(paper=paper).select_related("author").order_by("order")
     )
-    has_embedding = voyage4_search.has_embedding(paper.id) or EMBEDDING_MODEL.objects.filter(paper=paper).exists()
+    has_embedding = EMBEDDING_MODEL.objects.filter(paper=paper).exists()
 
     abstract = process_latex_commands(paper.abstract)
 
@@ -534,8 +535,8 @@ def get_valid_papers(context, current_paper=None):
 
 
 def get_similar_embeddings(paper, valid_paper_query, num_results, filters):
-    ids = voyage4_search.search_ids(paper.id, limit=num_results, **filters)
-    if ids is not None:
+    if EMBEDDING_MODEL is EmbeddingVoyage4:
+        ids = voyage4_search.similar_ids(paper.id, limit=num_results, **filters)
         found = {p.id: p for p in valid_paper_query.filter(id__in=ids).prefetch_related("authors")}
         return [found[pid] for pid in ids if pid in found]
     embedding = EMBEDDING_MODEL.objects.filter(paper=paper).first()

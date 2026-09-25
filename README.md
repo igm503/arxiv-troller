@@ -67,7 +67,7 @@ cd arxiv-troller
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py harvest_records
-python manage.py add_[voyage | gemini]_embeddings
+python manage.py add_voyage4_embeddings  # or add_voyage3_embeddings / add_gemini_embeddings
 ```
 
 ### Made with
