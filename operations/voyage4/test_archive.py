@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+import datetime as dt
+import os
 import numpy as np
 import archive as a
 
@@ -48,7 +50,56 @@ class ArchiveTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             c=a.catalog(Path(d));c.executemany('INSERT INTO papers VALUES(?,?,?,?,?,?)',self.rows)
             c.execute('INSERT INTO versions VALUES(?,?,?,?)',(1,self.rows[0][2],'/saved/pilot.npz',0));c.commit()
-            a.plan(c);a.plan(c)
-            jobs=c.execute('SELECT ids FROM jobs').fetchall();self.assertEqual([json.loads(x[0]) for x in jobs],[[2]])
+            self.assertEqual([[r[0] for r in rows] for rows in a.plan(c)], [[2]])
+            self.assertEqual([[r[0] for r in rows] for rows in a.plan(c)], [[2]])
             c.close()
+    def test_invalid_papers_do_not_block_snapshot_and_can_be_retried(self):
+        now = dt.datetime.now(dt.timezone.utc)
+        pg, tokenizer = MagicMock(), MagicMock()
+        pg.cursor.return_value.__enter__.return_value.fetchone.return_value = (3,)
+        with tempfile.TemporaryDirectory() as d, patch.object(a, 'database', return_value=pg), patch.object(a, 'Tokenizer') as factory, patch.object(a, 'check_space'):
+            factory.from_pretrained.return_value = tokenizer
+            c = a.catalog(Path(d))
+            for text, lengths, expected in [('', [0, 32001, 3], [3]), ('repaired', [3, 3, 3], [1, 2, 3])]:
+                pg.cursor.return_value.fetchmany.side_effect = [[(1, text, now, ['cs.LG'], now), (2, 'long', now, [], now), (3, 'valid', now, [], now)], []]
+                tokenizer.encode_batch.return_value = [range(n) for n in lengths]
+                a.freeze(c, Path(d))
+                self.assertEqual(sorted(r[0] for batch in a.plan(c) for r in batch), expected)
+                self.assertTrue(a.state(c, 'snapshot_complete')['complete'])
+            self.assertEqual(c.execute('SELECT count(*) FROM failures').fetchone()[0], 0)
+            c.close()
+
+    def test_unchanged_maintenance_does_not_rescan_archives(self):
+        with tempfile.TemporaryDirectory() as d, patch.object(a, 'freeze', return_value=0), patch.object(a, 'reuse', side_effect=AssertionError('Unnecessary scan')):
+            Path(d, 'progress.json').write_text(json.dumps(dict(status='complete')))
+            with patch('sys.argv', ['archive.py', 'all', '--root', d]):
+                a.main()
+
+    def test_crash_recovery_and_revisions_preserve_saved_bytes(self):
+        with tempfile.TemporaryDirectory() as d, patch.object(a, 'check_space'), patch.dict(os.environ, VOYAGE_API_KEY='test'):
+            root = Path(d)
+            (root / 'shards').mkdir()
+            c = a.catalog(root)
+            c.executemany('INSERT INTO papers VALUES(?,?,?,?,?,?)', self.rows)
+            c.commit()
+            client = Client(self.body)
+            with patch.object(a.httpx, 'Client') as factory:
+                factory.return_value.__enter__.return_value = client
+                with patch.object(a, 'register', side_effect=RuntimeError('simulated crash')):
+                    with self.assertRaises(RuntimeError):
+                        a.generate(c, root, 16000000, 4000, 1)
+                saved = next((root / 'shards').glob('*.npz'))
+                before = a.digest(saved)
+                a.reuse(c, root)
+                a.generate(c, root, 16000000, 4000, 1)
+                self.assertEqual(client.calls, 1)
+                c.execute('UPDATE papers SET abstract=?,sha=? WHERE id=1', ('revision', hashlib.sha256(b'revision').hexdigest()))
+                c.commit()
+                client.body = dict(self.body, data=self.body['data'][:1])
+                a.generate(c, root, 16000000, 4000, 1)
+                self.assertEqual(client.calls, 2)
+                self.assertEqual(a.digest(saved), before)
+                self.assertEqual(c.execute('SELECT count(*) FROM versions').fetchone()[0], 3)
+            c.close()
+
 if __name__=='__main__':unittest.main()

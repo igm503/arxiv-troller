@@ -1,19 +1,41 @@
 import datetime as dt
-import importlib.util
-import json
 import sys
 import unittest
+from unittest.mock import patch
+from zipfile import BadZipFile
+from django.test import override_settings
 from pathlib import Path
 import numpy as np
 from django.conf import settings
 if not settings.configured:settings.configure(VOYAGE4_ENABLED=False)
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'django'))
-from papers.voyage4_search import query_sql, predicate, search_ids
+from papers.voyage4_search import query_sql, search_ids
 import storage as s
+from papers import voyage4_search as search
 
 class SearchTests(unittest.TestCase):
     def test_disabled_backend_is_legacy(self):
         self.assertIsNone(search_ids(1,cutoff=None,category='',excluded=set(),limit=20))
+    @override_settings(VOYAGE4_ENABLED=True)
+    def test_missing_corrupt_archive_and_stale_maintenance_fall_back(self):
+        now = dt.datetime.now(dt.timezone.utc)
+        args = dict(cutoff=None, category='', excluded=set(), limit=20)
+        state = dict(ready=True, rolling=dict(maintained_at=now.isoformat()))
+        with patch.object(search, 'controls', return_value=state), patch.object(search, 'connection') as connection:
+            q = connection.cursor.return_value.__enter__.return_value
+            for error in [FileNotFoundError(), BadZipFile('broken')]:
+                q.fetchone.return_value = ('missing', 0, 'checksum')
+                with patch.object(search, 'shard_vectors', side_effect=error), self.assertLogs(search.logger, level='WARNING'):
+                    self.assertIsNone(search.search_ids(1, **args))
+            q.fetchone.return_value = (True,)
+            self.assertTrue(search.has_embedding(1))
+            state['rolling']['maintained_at'] = (now-dt.timedelta(hours=3)).isoformat()
+            connection.reset_mock()
+            with self.assertLogs(search.logger, level='WARNING') as logs:
+                self.assertIsNone(search.search_ids(1, **args))
+            self.assertIn('stale_maintenance', logs.output[0])
+            connection.cursor.assert_not_called()
+
     def test_real_sql_date_category_exclusions_and_float32_rescoring(self):
         pg=s.connect()
         try:

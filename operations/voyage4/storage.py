@@ -8,11 +8,9 @@ import json
 import os
 from pathlib import Path
 import struct
-import time
 
 os.environ.setdefault('OPENBLAS_NUM_THREADS','1')
 import numpy as np
-import psycopg2
 from psycopg2.extras import execute_values
 import archive as a
 
@@ -21,7 +19,7 @@ COLUMNS='paper_id,abstract_sha,created,categories,vector,bits,archive_path,archi
 
 
 def connect():
-    c=psycopg2.connect(dbname='arxiv',application_name='voyage4_storage')
+    c=a.database(readonly=False, application_name='voyage4_storage')
     with c.cursor() as q:
         q.execute('SET ROLE voyage4_writer')
         q.execute("SET statement_timeout='30min'; SET lock_timeout='10s'; SET timezone='UTC'")
@@ -76,7 +74,7 @@ def import_shards(c,pg,root):
         with np.load(path,allow_pickle=False) as z:
             ids=z['paper_ids'];hashes=z['text_sha256'];vec=z['vectors'];a.validate(vec,len(ids))
             entries={r[0]:r for r in c.execute('SELECT * FROM papers WHERE id IN ('+','.join('?'*len(ids))+')',list(map(int,ids)))}
-            keep=[i for i,pid in enumerate(ids) if int(pid) in entries and entries[int(pid)][2]==str(hashes[i])]
+            keep=[i for i,pid in enumerate(ids) if int(pid) in entries and entries[int(pid)][2]==str(hashes[i]) and not c.execute('SELECT 1 FROM failures WHERE id=?',(int(pid),)).fetchone()]
             rows=[entries[int(ids[i])] for i in keep]
             if rows:
                 put_rows(pg,rows,vec[keep],path,keep)
@@ -91,7 +89,7 @@ def import_shards(c,pg,root):
 
 def sync_metadata(c,pg):
     if not c.execute('SELECT 1 FROM metadata_dirty LIMIT 1').fetchone():return 0
-    dirty=c.execute('SELECT p.* FROM papers p JOIN metadata_dirty d ON d.id=p.id JOIN versions v ON v.id=p.id AND v.sha=p.sha').fetchall()
+    dirty=c.execute('SELECT p.* FROM papers p JOIN metadata_dirty d ON d.id=p.id JOIN versions v ON v.id=p.id AND v.sha=p.sha WHERE p.id NOT IN (SELECT id FROM failures)').fetchall()
     for off in range(0,len(dirty),1024):
         rows=dirty[off:off+1024]
         with pg.cursor() as q:
@@ -118,10 +116,17 @@ def sync_metadata(c,pg):
     return len(dirty)
 
 
-def acknowledge(c,pg):
-    scan=a.state(c,'snapshot_complete')
-    with pg.cursor() as q:q.execute('DELETE FROM voyage4.pending_papers WHERE queued_at<=%s',(scan['started'],))
-    pg.commit()
+def acknowledge(c, pg):
+    rows = c.execute('''SELECT id,queued_at FROM receipts WHERE id NOT IN (SELECT id FROM failures)
+        AND id NOT IN (SELECT id FROM metadata_dirty)''').fetchall()
+    for offset in range(0, len(rows), 1024):
+        batch = rows[offset:offset+1024]
+        with pg.cursor() as q:
+            execute_values(q, '''DELETE FROM voyage4.pending_papers p USING (VALUES %s) AS seen(id,queued_at)
+                WHERE p.paper_id=seen.id AND p.queued_at=seen.queued_at::timestamptz''', batch)
+        pg.commit()
+        c.executemany('DELETE FROM receipts WHERE id=?', [(row[0],) for row in batch])
+        c.commit()
 
 
 def rolling(c,pg,root,now=None):
@@ -133,7 +138,8 @@ def rolling(c,pg,root,now=None):
         q.execute('''SELECT e.paper_id,e.archive_path,e.archive_row,e.abstract_sha FROM voyage4.embeddings e
           LEFT JOIN voyage4.rolling30 r USING(paper_id)
           WHERE e.created >= %s AND (r.paper_id IS NULL OR r.abstract_sha<>e.abstract_sha) ORDER BY e.archive_path''',(floor,))
-        pending=q.fetchall()
+        failed = {r[0] for r in c.execute('SELECT id FROM failures')}
+        pending = [r for r in q.fetchall() if r[0] not in failed]
     groups={}
     for pid,path,index,sha in pending:groups.setdefault(path,[]).append((pid,index,sha))
     for path,items in groups.items():
@@ -142,7 +148,7 @@ def rolling(c,pg,root,now=None):
         entries={r[0]:r for r in c.execute('SELECT * FROM papers WHERE id IN ('+','.join('?'*len(ids))+')',ids)}
         with np.load(path,allow_pickle=False) as z:
             vec=z['vectors'];rows=[entries[pid] for pid,_,_ in items];indices=[i for _,i,_ in items]
-            assert all(r[2]==sha for r,(_,_,sha) in zip(rows,items))
+            a.require(all(r[2]==sha for r,(_,_,sha) in zip(rows,items)), 'Snapshot changed during rolling import')
             with pg.cursor() as q:
                 q.execute('CREATE TEMP TABLE IF NOT EXISTS v4_rolling_stage (LIKE voyage4.rolling30 INCLUDING DEFAULTS) ON COMMIT DELETE ROWS')
                 q.copy_expert('COPY v4_rolling_stage FROM STDIN WITH(FORMAT BINARY)',copy_rows(rows,vec[indices],path,indices,full=True))
@@ -179,8 +185,24 @@ def indexes(pg,include_general=True):
     pg.autocommit=False
 
 
+def status(c, pg):
+    with pg.cursor() as q:
+        q.execute("SELECT value FROM voyage4.control WHERE key='rolling'")
+        row = q.fetchone()
+        window = row[0] if row else {}
+        q.execute('SELECT count(*) FROM voyage4.pending_papers')
+        pending = q.fetchone()[0]
+        q.execute("SELECT value FROM voyage4.control WHERE key='ready'")
+        row = q.fetchone()
+    age = (dt.datetime.now(dt.timezone.utc) - timestamp(window['maintained_at'])).total_seconds() if window else None
+    failures = c.execute('SELECT count(*) FROM failures').fetchone()[0]
+    healthy = bool(row and row[0] is True and age is not None and age < 7200 and not failures)
+    a.event('maintenance health', healthy=healthy, maintenance_age_seconds=age, pending=pending, failed=failures)
+    return healthy
+
+
 def main():
-    p=argparse.ArgumentParser();p.add_argument('phase',choices=['import','rolling','rolling-index','indexes','acknowledge','all']);p.add_argument('--root',type=Path,default=a.ROOT)
+    p=argparse.ArgumentParser();p.add_argument('phase',choices=['import','rolling','rolling-index','indexes','acknowledge','status','all']);p.add_argument('--root',type=Path,default=a.ROOT)
     args=p.parse_args()
     with (args.root/'storage.lock').open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -189,6 +211,10 @@ def main():
         if args.phase in ['rolling','all']:rolling(c,pg,args.root)
         if args.phase in ['indexes','all','rolling-index']:indexes(pg,include_general=args.phase!='rolling-index')
         if args.phase=='acknowledge':acknowledge(c,pg)
+        if args.phase=='status':
+            healthy = status(c, pg)
+            pg.close(); c.close()
+            raise SystemExit(0 if healthy else 1)
         pg.close();c.close()
 
 if __name__=='__main__':main()

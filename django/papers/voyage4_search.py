@@ -4,7 +4,8 @@ from functools import lru_cache
 import hashlib
 import json
 import logging
-from pathlib import Path
+from itertools import count
+from zipfile import BadZipFile
 import time
 
 import numpy as np
@@ -14,6 +15,7 @@ from django.utils import timezone
 
 logger=logging.getLogger(__name__)
 _control_cache=(0.,None)
+_fallbacks = count(1)
 GENERAL_EF=1000
 GENERAL_CANDIDATES=500
 
@@ -38,6 +40,22 @@ def controls():
             values={key:json.loads(value) if isinstance(value,str) else value for key,value in q.fetchall()}
         _control_cache=(now,values)
     return _control_cache[1] or {}
+
+
+def fallback(reason, *, exc_info=False):
+    logger.warning('voyage4_fallback reason=%s process_count=%d', reason, next(_fallbacks), exc_info=exc_info)
+
+
+def has_embedding(paper_id):
+    if not getattr(settings, 'VOYAGE4_ENABLED', False):
+        return False
+    try:
+        with connection.cursor() as q:
+            q.execute('SELECT EXISTS(SELECT 1 FROM voyage4.embeddings WHERE paper_id=%s)', (paper_id,))
+            return controls().get('ready') is True and q.fetchone()[0]
+    except DatabaseError:
+        fallback('availability_check', exc_info=True)
+        return False
 
 
 def predicate(cutoff,category,excluded,alias='e'):
@@ -84,11 +102,19 @@ def search_ids(paper_id,*,cutoff,category,excluded,limit):
     if not getattr(settings,'VOYAGE4_ENABLED',False):return None
     try:
         state=controls()
-        if state.get('ready') is not True:return None
+        if state.get('ready') is not True:
+            fallback('not_ready')
+            return None
+        maintained = state.get('rolling', {}).get('maintained_at')
+        if maintained is None or timezone.now() - dt.datetime.fromisoformat(maintained) > dt.timedelta(hours=2):
+            fallback('stale_maintenance')
+            return None
         with connection.cursor() as q:
             q.execute('SELECT archive_path,archive_row,vector_sha FROM voyage4.embeddings WHERE paper_id=%s',(paper_id,))
             source=q.fetchone()
-        if source is None:return None
+        if source is None:
+            fallback('missing_source')
+            return None
         path,index,sha=source;v=shard_vectors(path)[index]
         if hashlib.sha256(v.tobytes()).hexdigest()!=sha:raise ValueError('Saved source vector checksum mismatch')
         query_vector='['+','.join(map(str,v.tolist()))+']';bits=''.join('1' if x else '0' for x in v>0)
@@ -107,6 +133,6 @@ def search_ids(paper_id,*,cutoff,category,excluded,limit):
                 # An exhausted iterative scan must not silently hide eligible results.
                 sql,params=query_sql(**args,exact=True);q.execute(sql,params);ids=[r[0] for r in q.fetchall()]
         return ids
-    except (DatabaseError,OSError,ValueError,KeyError,IndexError):
-        logger.exception('Voyage 4 retrieval unavailable; using preserved legacy embeddings')
+    except (DatabaseError,OSError,ValueError,KeyError,IndexError,BadZipFile):
+        fallback('retrieval_error', exc_info=True)
         return None

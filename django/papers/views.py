@@ -13,6 +13,8 @@ from django.utils import timezone
 from pgvector.django import L2Distance, HammingDistance
 from django.db import connection
 
+from . import voyage4_search
+
 from .models import (
     Paper,
     Tag,
@@ -291,7 +293,7 @@ def title_search(context):
         "query": query,
     }
 
-    valid_paper_query = get_valid_papers(context)
+    valid_paper_query, _ = get_valid_papers(context)
     papers = valid_paper_query.filter(title__icontains=query)
     papers = papers.prefetch_related("authors").order_by("-created")
 
@@ -308,7 +310,7 @@ def keyword_search(context):
         "type": "keyword",
         "query": raw_query,
     }
-    valid_paper_query = get_valid_papers(context)
+    valid_paper_query, _ = get_valid_papers(context)
 
     search_query = SearchQuery(raw_query, config="english", search_type="raw")
 
@@ -375,9 +377,9 @@ def paper_search(context):
         "paper": paper,
     }
 
-    valid_paper_query = get_valid_papers(context, paper)
+    valid_paper_query, filters = get_valid_papers(context, paper)
 
-    papers = get_similar_embeddings(paper, valid_paper_query, RESULTS_PER_PAGE)
+    papers = get_similar_embeddings(paper, valid_paper_query, RESULTS_PER_PAGE, filters)
 
     return papers, search_context
 
@@ -399,7 +401,7 @@ def tag_search(context):
 
     random.shuffle(tagged_papers)
 
-    valid_paper_query = get_valid_papers(context)
+    valid_paper_query, filters = get_valid_papers(context)
 
     # Calculate papers per source - need enough to cover offset + page + 1
     total_needed = RESULTS_PER_PAGE
@@ -413,7 +415,7 @@ def tag_search(context):
     for paper in tagged_papers:
         if time.time() - start_time > 2:  # need to finish before timeout
             res_per_source = total_needed
-        similars = get_similar_embeddings(paper, valid_paper_query, res_per_source)
+        similars = get_similar_embeddings(paper, valid_paper_query, res_per_source, filters)
         new_similars = []
 
         for similar in similars:
@@ -445,7 +447,7 @@ def paper_detail(request, paper_id):
     authors = (
         paper.authors.through.objects.filter(paper=paper).select_related("author").order_by("order")
     )
-    has_embedding = EMBEDDING_MODEL.objects.filter(paper=paper).exists()
+    has_embedding = voyage4_search.has_embedding(paper.id) or EMBEDDING_MODEL.objects.filter(paper=paper).exists()
 
     abstract = process_latex_commands(paper.abstract)
 
@@ -527,20 +529,15 @@ def get_valid_papers(context, current_paper=None):
     if context["category_filter"]:
         paper_query = paper_query.filter(categories__contains=[context["category_filter"]])
 
-    paper_query._voyage4_filters = dict(cutoff=date_cutoff, category=context["category_filter"], excluded=set(excluded_ids))
-    return paper_query
+    filters = dict(cutoff=date_cutoff, category=context["category_filter"], excluded=set(excluded_ids))
+    return paper_query, filters
 
 
-def get_similar_embeddings(paper, valid_paper_query, num_results):
-    from .voyage4_search import search_ids
-
-    filters = getattr(valid_paper_query, "_voyage4_filters", None)
-    if filters is not None:
-        ids = search_ids(paper.id, limit=num_results, **filters)
-        if ids is not None:
-            # Recheck the original queryset to preserve every application-level exclusion.
-            found = {p.id: p for p in valid_paper_query.filter(id__in=ids).prefetch_related("authors")}
-            return [found[pid] for pid in ids if pid in found]
+def get_similar_embeddings(paper, valid_paper_query, num_results, filters):
+    ids = voyage4_search.search_ids(paper.id, limit=num_results, **filters)
+    if ids is not None:
+        found = {p.id: p for p in valid_paper_query.filter(id__in=ids).prefetch_related("authors")}
+        return [found[pid] for pid in ids if pid in found]
     embedding = EMBEDDING_MODEL.objects.filter(paper=paper).first()
     if not embedding:
         return []

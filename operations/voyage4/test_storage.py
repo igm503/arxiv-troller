@@ -1,11 +1,6 @@
-import datetime as dt
 import json
-import tempfile
 import unittest
 import numpy as np
-import psycopg2
-from pathlib import Path
-import archive as a
 import storage as s
 
 class StorageTests(unittest.TestCase):

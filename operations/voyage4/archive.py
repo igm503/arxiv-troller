@@ -6,7 +6,6 @@ import datetime as dt
 import fcntl
 import gzip
 import hashlib
-import io
 import json
 import os
 from pathlib import Path
@@ -21,15 +20,23 @@ os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
 import httpx
 import numpy as np
 import psycopg2
-from dotenv import dotenv_values
+from dotenv import load_dotenv
 from tokenizers import Tokenizer
 
 MODEL='voyage-4-large'
 DIM=2048
 ENDPOINT='https://api.voyageai.com/v1/embeddings'
-ROOT=Path('/home/arxiv/arxiv_troller/data/voyage4')
-PILOT=Path('/home/arxiv/arxiv_troller/experiments/voyage4-pilot-20260919/data')
-_progress_cache=None
+PROJECT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT / '.env')
+ROOT = Path(os.getenv('VOYAGE4_ROOT', PROJECT / 'data/voyage4'))
+
+def database(readonly=True, **kwargs):
+    return psycopg2.connect(dbname=os.getenv('PGDATABASE', 'arxiv'),
+                           options='-c default_transaction_read_only=' + ('on' if readonly else 'off'), **kwargs)
+
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
 
 
 def event(message, **kw):
@@ -62,7 +69,8 @@ def catalog(root):
         PRIMARY KEY(id,sha));
       CREATE TABLE IF NOT EXISTS shards(path TEXT PRIMARY KEY,sha256 TEXT NOT NULL,papers INTEGER NOT NULL,
         tokens INTEGER NOT NULL,origin TEXT NOT NULL,imported INTEGER NOT NULL DEFAULT 0);
-      CREATE TABLE IF NOT EXISTS jobs(name TEXT PRIMARY KEY,ids TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending');
+      CREATE TABLE IF NOT EXISTS failures(id INTEGER PRIMARY KEY,reason TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS receipts(id INTEGER PRIMARY KEY,queued_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS metadata_dirty(id INTEGER PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS state(key TEXT PRIMARY KEY,value TEXT NOT NULL);
     ''')
@@ -83,33 +91,43 @@ def check_space(root, minimum_gib=12):
 
 def freeze(c, root):
     # Resume the exact initial ID range after a crash; later invocations scan additions/updates.
-    pg=psycopg2.connect(dbname='arxiv',application_name='voyage4_archive_snapshot',options='-c default_transaction_read_only=on')
+    pg=database(application_name='voyage4_archive_snapshot')
     tokenizer=Tokenizer.from_pretrained(MODEL.replace('voyage-','voyageai/voyage-',1));tokenizer.no_truncation()
     previous=state(c,'snapshot_complete')
     scan=state(c,'scan')
     if not scan or scan.get('complete'):
         with pg.cursor() as q:
-            q.execute('SELECT max(id) FROM public.papers_paper');maximum=q.fetchone()[0]
+            q.execute('SELECT max(id) FROM public.papers_paper');maximum=q.fetchone()[0] or 0
         scan=dict(max_id=maximum,last_id=0,started=dt.datetime.now(dt.timezone.utc).isoformat(),complete=False)
         state(c,'scan',scan)
     q=pg.cursor(name='voyage4_freeze');q.itersize=2048
     if previous:
         q.execute('''WITH todo AS MATERIALIZED (
           SELECT id FROM public.papers_paper WHERE id>%s AND id<=%s
-          UNION SELECT paper_id FROM voyage4.pending_papers WHERE queued_at<=%s::timestamptz AND paper_id<=%s)
-          SELECT p.id,p.abstract,p.created,p.categories FROM todo t JOIN public.papers_paper p ON p.id=t.id
+          UNION SELECT paper_id FROM voyage4.pending_papers WHERE queued_at<=%s::timestamptz AND paper_id<=%s
+          UNION SELECT id FROM public.papers_paper WHERE id=ANY(%s))
+          SELECT p.id,p.abstract,p.created,p.categories,pending.queued_at FROM todo t JOIN public.papers_paper p ON p.id=t.id
+          LEFT JOIN voyage4.pending_papers pending ON pending.paper_id=p.id
           WHERE p.id>%s ORDER BY p.id''',
-          (previous['max_id'],scan['max_id'],scan['started'],scan['max_id'],scan['last_id']))
+          (previous['max_id'],scan['max_id'],scan['started'],scan['max_id'],[r[0] for r in c.execute('SELECT id FROM failures')],scan['last_id']))
     else:
-        q.execute('SELECT id,abstract,created,categories FROM public.papers_paper WHERE id>%s AND id<=%s ORDER BY id',
+        q.execute('''SELECT p.id,p.abstract,p.created,p.categories,pending.queued_at FROM public.papers_paper p
+            LEFT JOIN voyage4.pending_papers pending ON pending.paper_id=p.id WHERE p.id>%s AND p.id<=%s ORDER BY p.id''',
                   (scan['last_id'],scan['max_id']))
     count=0
     while rows:=q.fetchmany(2048):
         check_space(root)
         lengths=[len(x) for x in tokenizer.encode_batch([r[1] for r in rows])]
         records=[]
-        for (pid,text,created,categories),tokens in zip(rows,lengths):
-            if not text.strip() or tokens>32000:raise ValueError(f'Invalid abstract for paper {pid}: {tokens} tokens')
+        for (pid,text,created,categories,queued_at),tokens in zip(rows,lengths):
+            if queued_at is not None:
+                c.execute('INSERT OR REPLACE INTO receipts VALUES(?,?)', (pid, queued_at.isoformat()))
+            if not text.strip() or tokens > 32000:
+                reason = f'Invalid abstract: {tokens} tokens'
+                c.execute('INSERT OR REPLACE INTO failures VALUES(?,?)', (pid, reason))
+                event('paper quarantined', paper_id=pid, reason=reason)
+            else:
+                c.execute('DELETE FROM failures WHERE id=?', (pid,))
             records.append((pid,text,hashlib.sha256(text.encode()).hexdigest(),tokens,created.isoformat(),json.dumps(categories)))
         c.executemany('''INSERT INTO papers VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
           abstract=excluded.abstract,sha=excluded.sha,tokens=excluded.tokens,created=excluded.created,categories=excluded.categories''',records)
@@ -128,8 +146,9 @@ def register(c,path,origin):
     sha=digest(path)
     with np.load(path,allow_pickle=False) as z:
         ids=z['paper_ids'];hashes=z['text_sha256'];vec=z['vectors'];m=json.loads(str(z['metadata']))
-        validate(vec,len(ids));assert m['model']==MODEL and m['dimensions']==DIM and m['input_type'] is None
-        assert len(set(map(int,ids)))==len(ids)
+        validate(vec,len(ids))
+        require(m['model']==MODEL and m['dimensions']==DIM and m['input_type'] is None, 'Wrong archive model')
+        require(len(ids)==len(hashes)==len(set(map(int,ids))), 'Invalid archive IDs or text hashes')
         before=c.total_changes
         c.executemany('INSERT OR IGNORE INTO versions VALUES(?,?,?,?)',[(int(pid),str(h),str(path),i) for i,(pid,h) in enumerate(zip(ids,hashes))])
         added=c.total_changes-before
@@ -138,38 +157,33 @@ def register(c,path,origin):
     c.commit();return added
 
 
-def reuse(c,root):
-    saved=json.loads((root/'progress.json').read_text()) if (root/'progress.json').exists() else {}
-    if state(c,'pilot_registered') and saved.get('status')=='complete' and saved.get('missing')==0:
-        event('completed archive catalog reused',papers=saved['completed']);return
-    if not state(c,'pilot_registered'):
-        export=json.loads((PILOT/'export.json').read_text())
-        for name,info in export['files'].items():
-            if name in ['vectors.float32.npy','paper_ids.npy','cohort.sqlite3']:
-                assert digest(PILOT/name)==info['sha256'],name
-        for p in sorted((PILOT/'shards').glob('*.npz')):register(c,p,'pilot')
-        state(c,'pilot_registered',True)
-    for p in sorted((root/'shards').glob('*.npz')):register(c,p,'standard-api')
-    event('saved outputs registered',versions=c.execute('SELECT count(*) FROM versions').fetchone()[0])
+def reuse(c, root, pilot=None):
+    # Recover published files even when the process died before catalog registration.
+    if pilot is not None:
+        export = json.loads((pilot / 'export.json').read_text())
+        for name in ['vectors.float32.npy', 'paper_ids.npy', 'cohort.sqlite3']:
+            require(digest(pilot / name) == export['files'][name]['sha256'], f'Pilot checksum: {name}')
+        for path in sorted((pilot / 'shards').glob('*.npz')):
+            register(c, path, 'pilot')
+    for path in sorted((root / 'shards').glob('*.npz')):
+        register(c, path, 'standard-api')
 
 
 def plan(c):
-    # Every job is persisted before API submission; unfinished files are recovered by reuse().
-    c.execute("DELETE FROM jobs WHERE state='done'")
-    assigned=set()
-    for (s,) in c.execute("SELECT ids FROM jobs WHERE state='pending'"):assigned.update(json.loads(s))
-    rows=c.execute('''SELECT p.id,p.sha,p.tokens FROM papers p LEFT JOIN versions v ON v.id=p.id AND v.sha=p.sha
-      WHERE v.id IS NULL ORDER BY p.created DESC,p.id DESC''')
-    batch=[];tokens=0;number=0
-    def save(batch):
-        key=hashlib.sha256(json.dumps([(r[0],r[1]) for r in batch]).encode()).hexdigest()
-        c.execute('INSERT OR IGNORE INTO jobs(name,ids) VALUES(?,?)',(key,json.dumps([r[0] for r in batch])))
+    """Derive deterministic requests from missing versions; no second job queue."""
+    rows = c.execute('''SELECT * FROM papers WHERE id IN (
+        SELECT p.id FROM papers p LEFT JOIN versions v ON v.id=p.id AND v.sha=p.sha
+        LEFT JOIN failures f ON f.id=p.id WHERE v.id IS NULL AND f.id IS NULL)
+        ORDER BY created DESC,id DESC''')
+    batch, tokens = [], 0
     for row in rows:
-        if row[0] in assigned:continue
-        if batch and (len(batch)>=256 or tokens+row[2]>90000):save(batch);number+=1;batch=[];tokens=0
-        batch.append(row);tokens+=row[2]
-    if batch:save(batch);number+=1
-    c.commit();event('requests planned',new_requests=number)
+        if batch and (len(batch) >= 256 or tokens + row[3] > 90000):
+            yield batch
+            batch, tokens = [], 0
+        batch.append(row)
+        tokens += row[3]
+    if batch:
+        yield batch
 
 
 def validate(vec,n):
@@ -236,69 +250,74 @@ def generate_one(root,name,rows,client,pacer):
     raise RuntimeError(f'Retry budget exhausted for {name}')
 
 
-def progress(c,root,status):
-    global _progress_cache
-    if _progress_cache is None:
-        total=c.execute('SELECT count(*),sum(tokens) FROM papers').fetchone()
-        complete=c.execute('SELECT count(*) FROM papers p JOIN versions v ON v.id=p.id AND v.sha=p.sha').fetchone()[0]
-        _progress_cache=dict(total=total,complete=complete)
-    total=_progress_cache['total'];complete=_progress_cache['complete']
-    usage=c.execute("SELECT coalesce(sum(tokens),0) FROM shards WHERE origin='standard-api'").fetchone()[0]
-    result=dict(model=MODEL,dimensions=DIM,dtype='float32',status=status,total=total[0],completed=complete,
-                missing=total[0]-complete,new_response_tokens=usage,new_list_price_usd=usage/1e6*.12,
-                updated=dt.datetime.now(dt.timezone.utc).isoformat(),free_bytes=shutil.disk_usage(root).free)
-    atomic_json(root/'progress.json',result);event('generation progress',**result);return result
+def progress(c, root):
+    total = c.execute('SELECT count(*) FROM papers').fetchone()[0]
+    complete = c.execute('SELECT count(*) FROM papers p JOIN versions v ON v.id=p.id AND v.sha=p.sha').fetchone()[0]
+    failed = c.execute('SELECT count(*) FROM failures').fetchone()[0]
+    failed_missing = c.execute('''SELECT count(*) FROM failures f JOIN papers p ON p.id=f.id
+        LEFT JOIN versions v ON v.id=p.id AND v.sha=p.sha WHERE v.id IS NULL''').fetchone()[0]
+    missing = total - complete - failed_missing
+    usage = c.execute("SELECT coalesce(sum(tokens),0) FROM shards WHERE origin='standard-api'").fetchone()[0]
+    return dict(model=MODEL, dimensions=DIM, dtype='float32', total=total, completed=complete,
+                missing=missing, failed=failed, status='incomplete' if missing else 'degraded' if failed else 'complete',
+                new_response_tokens=usage, new_list_price_usd=usage / 1e6 * .12,
+                updated=dt.datetime.now(dt.timezone.utc).isoformat(), free_bytes=shutil.disk_usage(root).free)
 
 
-def generate(c,root,tpm,rpm,workers):
-    key=dotenv_values('/home/arxiv/arxiv_troller/.env').get('VOYAGE_API_KEY')
-    if not key:raise ValueError('Missing VOYAGE_API_KEY')
-    pacer=Pacer(tpm,rpm)
-    jobs=c.execute("SELECT name,ids FROM jobs WHERE state='pending' ORDER BY rowid").fetchall()
-    def records(ids):
-        rows={r[0]:r for r in c.execute('SELECT * FROM papers WHERE id IN ('+','.join('?'*len(ids))+')',ids)}
-        return [rows[i] for i in ids]
-    progress(c,root,'generating');it=iter(jobs);done=0
-    with httpx.Client(headers={'Authorization':f'Bearer {key}'},timeout=120,limits=httpx.Limits(max_connections=workers,max_keepalive_connections=workers)) as client, ThreadPoolExecutor(max_workers=workers) as pool:
-        pending={}
-        def submit():
-            try:name,s=next(it)
-            except StopIteration:return False
-            ids=json.loads(s)
-            if all(c.execute('SELECT 1 FROM papers p JOIN versions v ON v.id=p.id AND v.sha=p.sha WHERE p.id=?',(i,)).fetchone() for i in ids):
-                c.execute("UPDATE jobs SET state='done' WHERE name=?",(name,));c.commit();return True
-            pending[pool.submit(generate_one,root,name,records(ids),client,pacer)]=name;return True
-        for _ in range(workers*2):submit()
-        while pending:
-            finished,_=wait(pending,return_when=FIRST_COMPLETED)
-            for f in finished:
-                name=pending.pop(f);path=f.result();added=register(c,path,'standard-api')
-                _progress_cache['complete']+=added
-                c.execute("UPDATE jobs SET state='done' WHERE name=?",(name,));c.commit();done+=1
-                if done%20==0:progress(c,root,'generating')
-                submit()
-            while len(pending)<workers*2 and submit():pass
-    result=progress(c,root,'complete')
-    if result['missing']:raise RuntimeError('Archive incomplete')
+def generate(c, root, tpm, rpm, workers):
+    jobs = iter(plan(c))
+    first = next(jobs, None)
+    if first is None:
+        return
+    key = os.getenv('VOYAGE_API_KEY')
+    require(key, 'Missing VOYAGE_API_KEY')
+    pacer = Pacer(tpm, rpm)
+    with httpx.Client(headers={'Authorization': f'Bearer {key}'}, timeout=120) as client, ThreadPoolExecutor(max_workers=workers) as pool:
+        pending = set()
+        batch = first
+        while batch is not None or pending:
+            while batch is not None and len(pending) < workers:
+                name = hashlib.sha256(json.dumps([(r[0], r[2]) for r in batch]).encode()).hexdigest()
+                pending.add(pool.submit(generate_one, root, name, batch, client, pacer))
+                batch = next(jobs, None)
+            finished, pending = wait(pending, return_when=FIRST_COMPLETED)
+            for future in finished:
+                register(c, future.result(), 'standard-api')
 
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('phase',choices=['snapshot','generate','all','status'])
-    p.add_argument('--root',type=Path,default=ROOT);p.add_argument('--tpm',type=int,default=14_000_000)
-    p.add_argument('--rpm',type=int,default=3000);p.add_argument('--workers',type=int,default=12)
-    a=p.parse_args();a.root.mkdir(parents=True,exist_ok=True);(a.root/'shards').mkdir(exist_ok=True)
-    with (a.root/'archive.lock').open('a') as lock:
-        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);c=catalog(a.root)
-        if a.phase=='status':progress(c,a.root,'inspection');return
-        changed=freeze(c,a.root) if a.phase in ['snapshot','all'] else None
-        if a.phase=='all' and changed==0 and (a.root/'progress.json').exists():
-            prior=json.loads((a.root/'progress.json').read_text())
-            dirty=c.execute('SELECT 1 FROM metadata_dirty LIMIT 1').fetchone()
-            pending=c.execute("SELECT 1 FROM jobs WHERE state='pending' LIMIT 1").fetchone()
-            if prior.get('status')=='complete' and prior.get('missing')==0 and not dirty and not pending:
-                event('no paper changes; saved archive remains complete',papers=prior['completed']);c.close();return
-        if a.phase in ['generate','all']:
-            reuse(c,a.root);plan(c);generate(c,a.root,a.tpm,a.rpm,a.workers)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('phase', choices=['snapshot', 'generate', 'all', 'status'])
+    parser.add_argument('--root', type=Path, default=ROOT)
+    parser.add_argument('--pilot', type=Path, help='Explicitly import a preserved pilot archive once')
+    parser.add_argument('--tpm', type=int, default=14_000_000)
+    parser.add_argument('--rpm', type=int, default=3000)
+    parser.add_argument('--workers', type=int, default=12)
+    args = parser.parse_args()
+    require(min(args.tpm, args.rpm, args.workers) > 0, 'Rate limits and workers must be positive')
+    (args.root / 'shards').mkdir(parents=True, exist_ok=True)
+    with (args.root / 'archive.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        c = catalog(args.root)
+        if args.phase in ['snapshot', 'all']:
+            changed = freeze(c, args.root)
+            saved = args.root / 'progress.json'
+            if args.phase == 'all' and changed == 0 and not c.execute('SELECT 1 FROM metadata_dirty LIMIT 1').fetchone():
+                if saved.exists() and json.loads(saved.read_text()).get('status') == 'complete':
+                    event('no paper changes; saved archive remains complete')
+                    c.close()
+                    return
+        if args.phase in ['generate', 'all']:
+            reuse(c, args.root, args.pilot)
+            generate(c, args.root, args.tpm, args.rpm, args.workers)
+        result = progress(c, args.root)
+        if args.phase in ['generate', 'all']:
+            require(result['missing'] == 0, 'Archive incomplete')
+        if args.phase != 'status':
+            atomic_json(args.root / 'progress.json', result)
+        event('archive status', **result)
         c.close()
 
-if __name__=='__main__':main()
+
+if __name__ == '__main__':
+    main()

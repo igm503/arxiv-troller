@@ -3,7 +3,6 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-import psycopg2
 from psycopg2 import sql
 import archive as a
 
@@ -19,7 +18,7 @@ class HashSink:
     def write(self,b):self.hash.update(b);self.bytes+=len(b)
 
 def inventory(baseline=None):
-    pg=psycopg2.connect(dbname='arxiv',application_name='voyage4_preservation_audit',options='-c default_transaction_read_only=on')
+    pg=a.database(application_name='voyage4_preservation_audit')
     result={}
     with pg.cursor() as q:
         for table,send in TABLES.items():
@@ -30,8 +29,8 @@ def inventory(baseline=None):
             q.copy_expert(q.mogrify(query,(boundary or 0,)).decode(),sink)
             result[table]=dict(count=count,max_id=maximum,protected_max_id=boundary,sha256=sink.hash.hexdigest(),bytes=sink.bytes)
             if baseline:
-                assert result[table]['sha256']==baseline[table]['sha256'],f'Legacy content changed: {table}'
-                assert count>=baseline[table]['count'],f'Legacy rows removed: {table}'
+                a.require(result[table]['sha256']==baseline[table]['sha256'], f'Legacy content changed: {table}')
+                a.require(count>=baseline[table]['count'], f'Legacy rows removed: {table}')
             a.event('legacy table byte audit',table=table,**result[table])
     pg.close();return result
 

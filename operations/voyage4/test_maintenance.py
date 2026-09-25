@@ -18,10 +18,11 @@ class Cursor:
         if isinstance(sql,bytes):sql=sql.decode()
         return self.q.execute(sql.replace('voyage4.',self.schema+'.'),args)
     def copy_expert(self,sql,stream):return self.q.copy_expert(sql.replace('voyage4.',self.schema+'.'),stream)
+    def __iter__(self):return iter(self.q)
     def __getattr__(self,key):return getattr(self.q,key)
 class Connection:
     def __init__(self,pg,schema):self.pg=pg;self.schema=schema
-    def cursor(self):return Cursor(self.pg.cursor(),self.schema)
+    def cursor(self, *args, **kwargs):return Cursor(self.pg.cursor(*args, **kwargs),self.schema)
     def commit(self):return self.pg.commit()
     @property
     def autocommit(self):return self.pg.autocommit
@@ -38,6 +39,7 @@ class MaintenanceTests(unittest.TestCase):
                 q.execute(f'CREATE TABLE {schema}.embeddings (LIKE voyage4.embeddings INCLUDING ALL)')
                 q.execute(f'CREATE TABLE {schema}.rolling30 (LIKE voyage4.rolling30 INCLUDING ALL)')
                 q.execute(f'CREATE TABLE {schema}.control (LIKE voyage4.control INCLUDING ALL)')
+                q.execute(f'CREATE TABLE {schema}.pending_papers (LIKE voyage4.pending_papers INCLUDING ALL)')
             pg.autocommit=False;wrapped=Connection(pg,schema)
             with tempfile.TemporaryDirectory() as d,patch.object(a,'check_space'):
                 root=Path(d);c=a.catalog(root);now=dt.datetime(2026,9,21,tzinfo=dt.timezone.utc)
@@ -70,7 +72,26 @@ class MaintenanceTests(unittest.TestCase):
                 with wrapped.cursor() as q:
                     q.execute('SELECT paper_id FROM voyage4.rolling30 ORDER BY paper_id');self.assertEqual(q.fetchall(),[(3,)])
                     q.execute('SELECT count(*) FROM voyage4.embeddings');self.assertEqual(q.fetchone()[0],3)
-                self.assertEqual(a.digest(path),original);c.close();wrapped.commit()
+                self.assertEqual(a.digest(path),original)
+                # Acknowledgement preserves quarantined papers and edits queued after the snapshot.
+                c.executemany('INSERT INTO receipts VALUES(?,?)', [(i, now.isoformat()) for i in [1,2,3]])
+                c.execute("INSERT INTO failures VALUES(3,'invalid abstract')");c.commit()
+                with wrapped.cursor() as q:
+                    q.execute("INSERT INTO voyage4.pending_papers VALUES(1,%s),(2,%s),(3,%s),(4,%s)", (now,now+dt.timedelta(seconds=1),now,now-dt.timedelta(seconds=1)))
+                wrapped.commit();s.acknowledge(c,wrapped)
+                with wrapped.cursor() as q:
+                    q.execute('SELECT paper_id FROM voyage4.pending_papers ORDER BY paper_id')
+                    self.assertEqual(q.fetchall(), [(2,), (3,), (4,)])
+                # The evaluator rereads current archive pointers; there is no stale reference cache.
+                from validate_retrieval import reference
+                scopes = [dict(name='all', cutoff=None, field=''), dict(name='field', cutoff=None, field='cs.LG')]
+                _, truth = reference(wrapped, [3], scopes)
+                self.assertEqual(truth['all'][3], {1, 2})
+                with wrapped.cursor() as q:
+                    q.execute("UPDATE voyage4.embeddings SET categories=ARRAY['math.AG'] WHERE paper_id=2")
+                _, changed = reference(wrapped, [3], scopes)
+                self.assertEqual(changed['field'][3], {1})
+                c.close();wrapped.commit()
         finally:
             pg.rollback();pg.autocommit=True
             with pg.cursor() as q:q.execute(f'DROP SCHEMA IF EXISTS {schema} CASCADE')
