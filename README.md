@@ -61,28 +61,33 @@ When searching based on a tag collection, the system queries for similar papers 
 
 ## API
 
-A JSON API at `/api/ingestion/` exposes the same search and tags as the site. It uses the site's session login: send the `sessionid` cookie, and for POSTs also the `csrftoken` cookie plus an `X-CSRFToken` header. Pick an operation with `action`. Reads are GET with query parameters; writes are POST with a JSON body.
+A JSON API at `/api/` exposes the same search and tags as the site. Pick an operation with `action`. Reads are GET with query parameters; writes are POST with a JSON body.
 
-| Action | Method | Parameters | Returns |
-|---|---|---|---|
-| `tags` | GET | | your tags: `[{id, name}]` |
-| `tag` | GET | `tag`, `cursor` | papers in a tag, by arXiv ID, 100 per page |
-| `papers` | GET | `since`, `cursor` | papers created or updated since `since`, newest first, 100 per page |
-| `search` | GET | `type`, then `q` (keyword, title), `paper` (arXiv ID) or `tag`; optional `since` or `date_filter`, `category`, `cursor` | the site's search, 20 per page, up to 400 results |
-| `similar` | GET | `tag`, `since`, `cursor` | for five tagged papers per page, each one's 20 nearest papers created since `since` |
-| `bulk_add` | POST | `tag`, `arxiv_ids` (up to 200) | adds papers to a tag, creating it if needed |
-| `bulk_remove` | POST | `tag`, `arxiv_ids` (up to 200) | removes papers from a tag |
-| `copy_tag` | POST | `source`, `target` | adds every paper in `source` to `target` |
+Keyword, title and similar-paper search, and the `papers` listing, need no login. Everything involving tags uses the site's session login: send the `sessionid` cookie, and for POSTs also the `csrftoken` cookie plus an `X-CSRFToken` header. Without a login those actions return 401.
+
+The site serves a short description of the login-free part for programs and AI agents at [`/llms.txt`](https://arxiv-troller.com/llms.txt). `/api/ingestion/` is the API's older path and still works.
+
+| Action | Method | Parameters | Login | Returns |
+|---|---|---|---|---|
+| `tags` | GET | | yes | your tags: `[{id, name}]` |
+| `tag` | GET | `tag`, `cursor` | yes | papers in a tag, by arXiv ID, 100 per page |
+| `papers` | GET | `since`, `cursor` | no | papers created or updated since `since`, newest first, 100 per page |
+| `search` | GET | `type`, then `q` (keyword, title), `paper` (arXiv ID) or `tag`; optional `since` or `date_filter`, `category`, `cursor` | only for `type=tag` | the site's search, 20 per page, up to 400 results |
+| `similar` | GET | `tag`, `since`, `cursor` | yes | for five tagged papers per page, each one's 20 nearest papers created since `since` |
+| `bulk_add` | POST | `tag`, `arxiv_ids` (up to 200) | yes | adds papers to a tag, creating it if needed |
+| `bulk_remove` | POST | `tag`, `arxiv_ids` (up to 200) | yes | removes papers from a tag |
+| `copy_tag` | POST | `source`, `target` | yes | adds every paper in `source` to `target` |
 
 - `search` types match the site's search modes: `keyword`, `title`, `paper` (similar to one paper) and `tag` (similar to a tag's papers, never returning papers already in the tag). Tag search samples the tag's papers randomly, so repeated calls can differ.
 - `since` is an ISO 8601 time with a timezone, e.g. `2026-09-01T00:00:00+00:00`. For `search`, pass either `since` or a site `date_filter` (`1day`, `3day`, `1week`, `1month`, `3months`, `6months`, `1year`, `2years`, `all`); the default is `1week`.
 - Papers are returned as `{arxiv_id, title, abstract, created, updated, categories}`.
 - Lists include `next_cursor`: pass it back as `cursor` for the next page. It is `null` on the last page.
 - Writes return `{tag, count, missing}`, where `missing` lists arXiv IDs that aren't in the database.
-- Errors return `{"ok": false, "error": ...}` with status 400 (bad input), 401 (not logged in) or 405 (wrong method).
+- Errors return `{"ok": false, "error": ...}` with status 400 (bad input), 401 (that action needs a login) or 405 (wrong method).
 
 ```bash
-curl -b "sessionid=$SESSION" "https://arxiv-troller.com/api/ingestion/?action=search&type=tag&tag=backbones&since=2026-09-01T00:00:00%2B00:00"
+curl "https://arxiv-troller.com/api/?action=search&type=keyword&q=%22list+decoding%22&date_filter=all"
+curl -b "sessionid=$SESSION" "https://arxiv-troller.com/api/?action=search&type=tag&tag=backbones&since=2026-09-01T00:00:00%2B00:00"
 ```
 
 ## Local Installation

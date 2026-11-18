@@ -1,0 +1,55 @@
+# arXiv Troller
+
+> A search engine for arXiv papers: keyword and title search over titles and abstracts, and "similar papers" for any arXiv ID, ranked by text embeddings. Searching is free and needs no account. Programs should use the JSON API described here instead of reading the HTML pages.
+
+Site: https://arxiv-troller.com/
+
+## JSON API
+
+One endpoint, GET only, no login, no API key:
+
+    https://arxiv-troller.com/api/?action=search&type=<keyword|title|paper>&...
+
+Search parameters:
+
+- `type=keyword` with `q`: full-text search over titles and abstracts. Words are ORed together and results are ranked by relevance; put a phrase in double quotes to require it as a phrase. Use plain words: punctuation such as parentheses is not supported.
+- `type=title` with `q`: papers whose title contains `q` as a substring (case-insensitive), newest first.
+- `type=paper` with `paper`: papers most similar to the one with that arXiv ID (for example `2301.12345`, no version suffix), nearest first.
+- `date_filter`: how far back to look. One of `1day`, `3day`, `1week`, `1month`, `3months`, `6months`, `1year`, `2years`, `all`. THE DEFAULT IS `1week`, so pass `date_filter=all` unless you only want new papers. Alternatively pass `since`, an ISO 8601 time with a timezone (URL-encode the `+` as `%2B`). Pass one or the other, not both.
+- `category` (optional): an arXiv category such as `cs.LG` or `quant-ph`. Only papers listed in that category are returned.
+- `cursor` (optional): the `next_cursor` from the previous response, to get the next page.
+
+A response looks like this:
+
+    {"ok": true,
+     "papers": [{"arxiv_id": "2301.12345", "title": "...", "abstract": "...",
+                 "created": "2023-01-29T18:00:00+00:00", "updated": "2023-02-03T09:12:00+00:00",
+                 "categories": ["cs.LG", "cs.CV"]}],
+     "next_cursor": "MTIzLDQ1Ng==",
+     "search": {"type": "keyword", "since": null, "category": ""}}
+
+- Each page has up to 20 papers. `next_cursor` is `null` on the last page; a search returns at most 400 papers in total.
+- `search.since` is the earliest paper date the search covered (`null` means all time).
+- The paper's page on arXiv is `https://arxiv.org/abs/<arxiv_id>`.
+- Errors are `{"ok": false, "error": "..."}` with status 400 (bad input), 401 (that action needs a login) or 405 (wrong method).
+
+Examples:
+
+    https://arxiv-troller.com/api/?action=search&type=keyword&q=%22list+decoding%22+Reed-Solomon&date_filter=all
+    https://arxiv-troller.com/api/?action=search&type=title&q=convnet+for+the+2020s&date_filter=all
+    https://arxiv-troller.com/api/?action=search&type=paper&paper=2201.03545&date_filter=1year&category=cs.CV
+
+To list every paper added or updated since a time, 100 per page, newest first:
+
+    https://arxiv-troller.com/api/?action=papers&since=2026-11-01T00:00:00%2B00:00
+
+Here `next_cursor` is a number; pass it back as `cursor`.
+
+## Not available without a login
+
+Tags (personal collections of papers) and searches based on a tag belong to an account, so the API's tag actions return 401 to anonymous callers. They are described in the README linked below.
+
+## Web pages
+
+- [Search](https://arxiv-troller.com/): the same searches as HTML. `/?q=<words>`, `/?q=title:+<substring>` and `/?q=paper:+<arXiv ID>`, with the same `date_filter` and `category` parameters.
+- [Source code and full API reference](https://github.com/igm503/arxiv-troller): the README documents every API action, including the tag actions.
