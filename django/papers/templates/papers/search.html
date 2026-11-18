@@ -52,6 +52,7 @@
     {% if search_context.type == 'keyword' %}
     <h3>Keyword Search Results</h3>
     <p>Searching for: <strong>[{{ search_context.query }}]</strong></p>
+    {% if search_context.note %}<p>{{ search_context.note }}</p>{% endif %}
     {% elif search_context.type == 'title' %}
     <h3>Title Search Results</h3>
     <p>Searching for: <strong>"{{ search_context.query }}"</strong></p>

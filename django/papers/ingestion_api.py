@@ -169,14 +169,15 @@ def search(user, params):
             raise ValueError(f"Unknown paper {params['paper']}")
     else:
         context["parsed_tag_for_search"] = Tag.objects.get(user=user, name=params["tag"])
-    papers = list(SEARCHES[kind](context)[0])
+    papers, search_context = SEARCHES[kind](context)
+    papers = list(papers)
     seen |= {paper.id for paper in papers}
     more = papers and len(seen) < MAX_RESULTS
-    return response(
-        papers,
-        encode_cursor(seen) if more else None,
-        search={"type": kind, "since": since and since.isoformat(), "category": context["category_filter"]},
-    )
+    described = {"type": kind, "since": since and since.isoformat(), "category": context["category_filter"]}
+    if search_context.get("note"):
+        # Set when a broad keyword search matched on fewer words than it ranked on
+        described["note"] = search_context["note"]
+    return response(papers, encode_cursor(seen) if more else None, search=described)
 
 
 def similar(user, params):

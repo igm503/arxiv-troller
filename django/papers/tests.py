@@ -271,6 +271,59 @@ class PageTests(TestCase):
         response = self.client.get("/api/", dict(action="search", type="keyword", q='"AGL(1,q)"', date_filter="all"))
         self.assertEqual([paper["arxiv_id"] for paper in response.json()["papers"]], ["punct"])
 
+    def narrowed_keyword_search(self, query, budget=2):
+        """A keyword search over all time with the match budget lowered to a couple of papers"""
+        shares = {"abstract": 1.0, "paper": 1.0, "3": 1 / 6, "4": 1 / 6}
+        with patch("papers.views.MATCH_BUDGET", budget), patch("papers.views.lexeme_frequencies", return_value=(shares, 0.0)), \
+                patch("papers.views.estimated_paper_count", return_value=6) as count:
+            response = self.client.get("/", {"q": query, "date_filter": "all"})
+            api = self.client.get("/api/", dict(action="search", type="keyword", q=query, date_filter="all")).json()
+        self.assertEqual(count.call_args.args, (None,))
+        ids = [result["paper"].arxiv_id for result in response.context["results"]]
+        self.assertEqual(sorted(ids), sorted(paper["arxiv_id"] for paper in api["papers"]))
+        self.assertEqual(response.context["search_context"]["note"], api["search"].get("note"))
+        return ids, api["search"].get("note") or ""
+
+    def test_broad_keyword_search_matches_on_its_rarer_words(self):
+        # Within the budget nothing changes: any word matches
+        self.assertEqual(self.narrowed_keyword_search("abstract 3", budget=100), ([f"test{i}" for i in (3, 0, 1, 2, 4, 5)], ""))
+        self.assertEqual(self.narrowed_keyword_search("3 4"), (["test3", "test4"], ""))
+        # Over it, the common word stops matching but still ranks
+        ids, note = self.narrowed_keyword_search("abstract 3")
+        self.assertEqual((ids, note), (["test3"], "Results contain at least one of: 3. The remaining words only affect the order."))
+        ids, note = self.narrowed_keyword_search('abstract "paper 4" 3 nothing')
+        self.assertEqual(sorted(ids), ["test3", "test4"])
+        self.assertIn('at least one of: 3, nothing, "paper 4".', note)
+        self.assertEqual(self.narrowed_keyword_search("abstract nothing")[0], [])
+        # Stop words and punctuation have nothing to match on and are ignored
+        self.assertEqual(self.narrowed_keyword_search("the ( abstract 3")[0], ["test3"])
+
+    def test_keyword_search_of_only_common_words_requires_all_of_them(self):
+        Paper.objects.create(arxiv_id="half", created=timezone.now(), title="Paper only", abstract="x", categories=["cs.LG"])
+        ids, note = self.narrowed_keyword_search("abstract paper")
+        self.assertEqual((sorted(ids), note), ([f"test{i}" for i in range(6)], "Every word in this search is common, so results contain all of them."))
+        # A single common word, or a narrow enough date range, is searched as before
+        self.assertEqual(len(self.narrowed_keyword_search("paper")[0]), 7)
+        self.assertEqual(self.narrowed_keyword_search("paper")[1], "")
+        self.assertEqual(len(self.keyword_ids("abstract paper")), 7)
+
+    def test_word_frequencies_come_from_postgres_statistics(self):
+        from papers import views
+
+        self.addCleanup(views._frequencies.update, expires=0)
+        views._frequencies.update(expires=0)
+        self.assertEqual(views.lexeme_frequencies(), ({}, 0.0))
+        with connection.cursor() as cursor:
+            cursor.execute("ANALYZE papers_paper")
+        views._frequencies.update(expires=0)
+        known, unknown = views.lexeme_frequencies()
+        self.assertAlmostEqual(known["abstract"], 1.0)
+        self.assertAlmostEqual(known["3"], 1 / 6)
+        self.assertEqual(unknown, min(known.values()) / 4)
+        self.assertEqual(views.estimated_paper_count(None), 6)
+        self.assertLess(views.estimated_paper_count(timezone.now() - timedelta(days=2, hours=12)), 6)
+        self.assertEqual(views.piece_lexemes(["Stabilizer states", "the", "("]), [["stabil", "state"], [], []])
+
     def test_search_prefixes_work_without_the_space(self):
         for query in ["paper: test0", "paper:test0", "paper:+test0", "paper:   test0"]:
             response = self.client.get("/", {"q": query, "date_filter": "1month"})

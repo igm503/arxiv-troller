@@ -311,19 +311,19 @@ def title_search(context):
 def keyword_search(context):
     """Execute keyword search - returns (results, has_more, search_context, all_categories)"""
     query = context["query"]
+    valid_paper_query, filters = get_valid_papers(context)
+    match_query, rank_query, note = keyword_queries(query, filters["cutoff"])
     search_context = {
         "type": "keyword",
         "query": parse_search_query(query),
+        "note": note,
     }
-    valid_paper_query, _ = get_valid_papers(context)
 
-    search_query = keyword_tsquery(query)
-
-    papers = valid_paper_query.filter(search_vector=search_query)
+    papers = valid_paper_query.filter(search_vector=match_query)
     papers = papers.annotate(
         rank=Func(
             F("search_vector"),
-            search_query,
+            rank_query,
             function="ts_rank",
             output_field=FloatField(),
         )
@@ -342,22 +342,108 @@ def split_search_query(query):
 
 
 def parse_search_query(query):
-    """Describe a keyword query the way it is searched: words and phrases joined by OR (empty if there are none)"""
+    """Describe a keyword query: words and phrases joined by OR (empty if there are none)"""
     words, phrases = split_search_query(query)
     return " | ".join(words + ["(" + " <-> ".join(phrase.split()) + ")" for phrase in phrases])
 
 
-def keyword_tsquery(query):
-    """Match any of the query's words or quoted phrases.
+# A keyword search ranks every paper it matches, at roughly 5 microseconds a paper, so a common word
+# ("model" is in 39% of abstracts) makes a search over all time take seconds. Above this many expected
+# matches the search stops matching on its most common words; see keyword_queries.
+MATCH_BUDGET = 150_000
+FREQUENCY_TTL = 3600
+_frequencies = {"expires": 0, "known": {}, "unknown": 0.0}
 
-    Each piece goes through plainto_tsquery or phraseto_tsquery, which treat punctuation as text, so
-    characters that are operators in tsquery syntax ("(", "&", ":", "!") cannot cause a syntax error.
+
+def lexeme_frequencies():
+    """The share of papers containing each of the commonest lexemes, and the share to assume for any other.
+
+    Postgres keeps these for the search column (pg_stats, refreshed by ANALYZE): about a thousand lexemes,
+    each in at least 1.6% of papers. A lexeme that is not listed is rarer than all of those.
+    """
+    if _frequencies["expires"] < time.monotonic():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT most_common_elems::text::text[], most_common_elem_freqs FROM pg_stats "
+                "WHERE schemaname = current_schema() AND tablename = %s AND attname = 'search_vector'",
+                [Paper._meta.db_table],
+            )
+            lexemes, freqs = cursor.fetchone() or (None, None)
+        known = dict(zip(lexemes, freqs)) if lexemes else {}
+        # Unlisted lexemes are below the smallest listed share and usually far below it
+        unknown = min(known.values()) / 4 if known else 0.0
+        _frequencies.update(expires=time.monotonic() + FREQUENCY_TTL, known=known, unknown=unknown)
+    return _frequencies["known"], _frequencies["unknown"]
+
+
+def estimated_paper_count(cutoff):
+    """The planner's estimate of how many papers were created since the cutoff (all papers if None)"""
+    sql = f"EXPLAIN (FORMAT JSON) SELECT 1 FROM {connection.ops.quote_name(Paper._meta.db_table)}"
+    with connection.cursor() as cursor:
+        cursor.execute(sql + (" WHERE created >= %s" if cutoff else ""), [cutoff] if cutoff else [])
+        plan = cursor.fetchone()[0]
+    plan = json.loads(plan) if isinstance(plan, str) else plan
+    return plan[0]["Plan"]["Plan Rows"]
+
+
+def piece_lexemes(pieces):
+    """The lexemes of each word or phrase (none for stop words and bare punctuation)"""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT tsvector_to_array(to_tsvector('english', piece)) "
+            "FROM unnest(%s::text[]) WITH ORDINALITY AS pieces(piece, position) ORDER BY position",
+            [pieces],
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+
+def keyword_queries(query, cutoff):
+    """Build a keyword search: the tsquery papers must match, the one that ranks them, and a note if they differ.
+
+    A paper normally matches when it contains any of the query's words or quoted phrases, and papers are
+    ranked on all of them. Each piece goes through plainto_tsquery or phraseto_tsquery, which treat
+    punctuation as text, so tsquery operators ("(", "&", ":", "!") in a query cannot cause a syntax error.
+
+    When that would match more than MATCH_BUDGET papers, matching is narrowed and ranking is left alone:
+    - if some pieces are rare enough, a paper must contain one of the rarest pieces that fit the budget;
+    - if even the rarest piece is too common, a paper must contain every piece.
     """
     words, phrases = split_search_query(query)
+    labels = words + [f'"{phrase}"' for phrase in phrases]
     parts = [SearchQuery(word, config="english", search_type="plain") for word in words]
     parts += [SearchQuery(phrase, config="english", search_type="phrase") for phrase in phrases]
-    # With nothing to search for, an empty query matches no papers
-    return reduce(operator.or_, parts or [SearchQuery("", config="english", search_type="plain")])
+    if not parts:
+        # With nothing to search for, an empty query matches no papers
+        empty = SearchQuery("", config="english", search_type="plain")
+        return empty, empty, None
+    rank_query = reduce(operator.or_, parts)
+
+    paper_count = estimated_paper_count(cutoff)
+    if paper_count <= MATCH_BUDGET or len(parts) == 1:
+        return rank_query, rank_query, None
+    known, unknown = lexeme_frequencies()
+    # A piece matches at most as many papers as its rarest lexeme; pieces without lexemes match nothing
+    sizes = sorted(
+        (min(known.get(lexeme, unknown) for lexeme in lexemes) * paper_count, index)
+        for index, lexemes in enumerate(piece_lexemes(words + phrases))
+        if lexemes
+    )
+    chosen, total = [], 0
+    for size, index in sizes:
+        if total + size > MATCH_BUDGET:
+            break
+        chosen.append(index)
+        total += size
+    if len(chosen) == len(sizes):
+        return rank_query, rank_query, None
+    if chosen:
+        match_query = reduce(operator.or_, [parts[index] for index in chosen])
+        rare = ", ".join(labels[index] for index in sorted(chosen))
+        return match_query, rank_query, f"Results contain at least one of: {rare}. The remaining words only affect the order."
+    if len(sizes) == 1:
+        return rank_query, rank_query, None
+    match_query = reduce(operator.and_, [parts[index] for _, index in sizes])
+    return match_query, rank_query, "Every word in this search is common, so results contain all of them."
 
 
 def paper_search(context):

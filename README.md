@@ -18,7 +18,7 @@ This tool helps researchers manage the overwhelming flow of papers on arXiv by p
 
 The application supports four complementary search approaches:
 
-**Keyword Search**: Full-text search over titles and abstracts, with date and category filters
+**Keyword Search**: Full-text search over titles and abstracts, with date and category filters. A paper matches if it contains any of the words or quoted phrases. When that would match more than about 150,000 papers, very common words only affect the ranking, and a search made only of common words returns papers containing all of them
 
 **Title Search**: Substring search over titles (`title: ...` in the search box)
 
