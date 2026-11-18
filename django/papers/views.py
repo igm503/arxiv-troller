@@ -1,7 +1,8 @@
 import json
+import operator
 import re
 from datetime import timedelta
-from functools import lru_cache
+from functools import lru_cache, reduce
 import random
 import time
 
@@ -309,14 +310,13 @@ def title_search(context):
 def keyword_search(context):
     """Execute keyword search - returns (results, has_more, search_context, all_categories)"""
     query = context["query"]
-    raw_query = parse_search_query(query)
     search_context = {
         "type": "keyword",
-        "query": raw_query,
+        "query": parse_search_query(query),
     }
     valid_paper_query, _ = get_valid_papers(context)
 
-    search_query = SearchQuery(raw_query, config="english", search_type="raw")
+    search_query = keyword_tsquery(query)
 
     papers = valid_paper_query.filter(search_vector=search_query)
     papers = papers.annotate(
@@ -333,31 +333,30 @@ def keyword_search(context):
     return papers, search_context
 
 
+def split_search_query(query):
+    """Split a keyword query into its words and its quoted phrases"""
+    phrases = [phrase for phrase in re.findall(r'"([^"]+)"', query) if phrase.split()]
+    words = re.sub(r'"[^"]+"', "", query).split()
+    return words, phrases
+
+
 def parse_search_query(query):
-    """Parse search query into tsquery syntax with OR logic and phrase support"""
-    phrases = re.findall(r'"([^"]+)"', query)
+    """Describe a keyword query the way it is searched: words and phrases joined by OR (empty if there are none)"""
+    words, phrases = split_search_query(query)
+    return " | ".join(words + ["(" + " <-> ".join(phrase.split()) + ")" for phrase in phrases])
 
-    remaining = re.sub(r'"[^"]+"', "", query)
 
-    terms = remaining.split()
+def keyword_tsquery(query):
+    """Match any of the query's words or quoted phrases.
 
-    query_parts = []
-
-    for term in terms:
-        term = term.strip()
-        if term:
-            query_parts.append(term)
-
-    for phrase in phrases:
-        words = phrase.split()
-        if words:
-            phrase_query = " <-> ".join(words)
-            query_parts.append(f"({phrase_query})")
-
-    if not query_parts:
-        return ""
-
-    return " | ".join(query_parts)
+    Each piece goes through plainto_tsquery or phraseto_tsquery, which treat punctuation as text, so
+    characters that are operators in tsquery syntax ("(", "&", ":", "!") cannot cause a syntax error.
+    """
+    words, phrases = split_search_query(query)
+    parts = [SearchQuery(word, config="english", search_type="plain") for word in words]
+    parts += [SearchQuery(phrase, config="english", search_type="phrase") for phrase in phrases]
+    # With nothing to search for, an empty query matches no papers
+    return reduce(operator.or_, parts or [SearchQuery("", config="english", search_type="plain")])
 
 
 def paper_search(context):

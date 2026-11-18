@@ -12,7 +12,7 @@ One endpoint, GET only, no login, no API key:
 
 Search parameters:
 
-- `type=keyword` with `q`: full-text search over titles and abstracts. Words are ORed together and results are ranked by relevance; put a phrase in double quotes to require it as a phrase. Use plain words: punctuation such as parentheses is not supported.
+- `type=keyword` with `q`: full-text search over titles and abstracts. Words are ORed together and results are ranked by relevance; put a phrase in double quotes to require it as a phrase. Punctuation is ignored, so `AGL(1,q)` searches for the words `AGL`, `1` and `q`.
 - `type=title` with `q`: papers whose title contains `q` as a substring (case-insensitive), newest first.
 - `type=paper` with `paper`: papers most similar to the one with that arXiv ID (for example `2301.12345`, no version suffix), nearest first.
 - `date_filter`: how far back to look. One of `1day`, `3day`, `1week`, `1month`, `3months`, `6months`, `1year`, `2years`, `all`. THE DEFAULT IS `1week`, so pass `date_filter=all` unless you only want new papers. Alternatively pass `since`, an ISO 8601 time with a timezone (URL-encode the `+` as `%2B`). Pass one or the other, not both.

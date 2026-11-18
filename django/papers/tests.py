@@ -245,6 +245,28 @@ class PageTests(TestCase):
         html = response.json()["html"]
         self.assertEqual([pid for pid in self.ids if f'data-paper-id="{pid}"' in html], self.ids[3:5])
 
+    def keyword_ids(self, query):
+        response = self.client.get("/", {"q": query, "date_filter": "all"})
+        self.assertEqual(response.status_code, 200, query)
+        return sorted(result["paper"].arxiv_id for result in response.context["results"])
+
+    def test_keyword_search_ors_words_and_matches_phrases(self):
+        self.assertEqual(self.keyword_ids("abstract nothing"), [f"test{i}" for i in range(6)])
+        self.assertEqual(self.keyword_ids('"abstract 3"'), ["test3"])
+        self.assertEqual(self.keyword_ids('"paper abstract"'), [])
+        self.assertEqual(self.keyword_ids('"abstract 3" "paper 4" nothing'), ["test3", "test4"])
+
+    def test_keyword_search_treats_punctuation_as_text(self):
+        Paper.objects.create(arxiv_id="punct", created=timezone.now(), title="The group AGL(1,q) & its codes",
+                             abstract="Clifford group, Sp(2n) and C++", categories=["cs.IT"])
+        for query in ['"AGL(1,q)"', "AGL(1,q)", '"Clifford group" "Sp(2n"', "group & nothing", "!group", "group:*",
+                      "(group", "group)", "nothing | group", "group <-> nothing", "it's group", "group\\"]:
+            self.assertEqual(self.keyword_ids(query), ["punct"], query)
+        for query in ["title:+hyperoval", "paper:2608.09347", "(", "&", "!", ":", "'", '"', '" "', '"("', "<->", "a:b:c"]:
+            self.assertEqual(self.keyword_ids(query), [], query)
+        response = self.client.get("/api/", dict(action="search", type="keyword", q='"AGL(1,q)"', date_filter="all"))
+        self.assertEqual([paper["arxiv_id"] for paper in response.json()["papers"]], ["punct"])
+
 
 class IngestionApiTests(TestCase):
     def setUp(self):
