@@ -267,6 +267,35 @@ class IngestionApiTests(TestCase):
         self.client.logout()
         self.assertEqual(self.get(action="tags").status_code, 401)
 
+    def test_search_and_papers_need_no_login_but_tags_do(self):
+        self.client.logout()
+        for path in ("/api/", "/api/ingestion/"):
+            response = self.client.get(path, dict(action="search", type="paper", paper="test0", date_filter="1month"))
+            self.assertEqual(self.arxiv_ids(response), ["test1", "test2", "test3", "test4"], path)
+        self.assertEqual(len(self.arxiv_ids(self.get(action="search", type="keyword", q="abstract", date_filter="all"))), 6)
+        self.assertEqual(self.arxiv_ids(self.get(action="search", type="title", q="Paper 3", date_filter="all")), ["test3"])
+        since = (timezone.now() - timedelta(days=3, hours=12)).isoformat()
+        self.assertEqual(self.arxiv_ids(self.get(action="papers", since=since)), ["test0", "test1", "test2"])
+        self.assertEqual(self.get(action="search", type="nope", q="x").status_code, 400)
+        self.assertEqual(self.get(action="unknown").status_code, 400)
+        for params in [dict(action="search", type="tag", tag="reading"), dict(action="tags"),
+                       dict(action="tag", tag="reading"), dict(action="similar", tag="reading", since=since)]:
+            self.assertEqual(self.get(**params).status_code, 401, params)
+        for body in [dict(action="bulk_add", tag="reading", arxiv_ids=["test2"]),
+                     dict(action="bulk_remove", tag="reading", arxiv_ids=["test0"]),
+                     dict(action="copy_tag", source="reading", target="new")]:
+            self.assertEqual(self.post(**body).status_code, 401, body)
+        self.assertEqual(TaggedPaper.objects.filter(tag=self.tag).count(), 2)
+        self.assertFalse(Tag.objects.filter(name="new").exists())
+
+    def test_llms_txt_and_search_help_describe_the_api(self):
+        response = self.client.get("/llms.txt")
+        self.assertEqual(response["Content-Type"], "text/plain; charset=utf-8")
+        text = response.content.decode()
+        self.assertTrue(text.startswith("# arXiv Troller\n"))
+        self.assertIn("/api/?action=search&type=", text)
+        self.assertIn('href="/llms.txt"', self.client.get("/").content.decode())
+
     def test_tags_tag_and_papers(self):
         self.assertEqual(self.get(action="tags").json()["tags"], [{"id": self.tag.id, "name": "reading"}])
         self.assertEqual(self.arxiv_ids(self.get(action="tag", tag="reading")), ["test0", "test1"])

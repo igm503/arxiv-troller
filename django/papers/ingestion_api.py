@@ -1,14 +1,18 @@
-"""Authenticated JSON API used by Heedless Backbones.
+"""JSON API for the site's search and tags, used by Heedless Backbones and described publicly in /llms.txt.
 
-Every request goes to /api/ingestion/ with an "action". Reads are GET with query parameters; writes are
-POST with a JSON body. The API uses the same account, tags and search functions as the website.
+Every request goes to /api/ (or its older path, /api/ingestion/) with an "action". Reads are GET with query
+parameters; writes are POST with a JSON body. The API uses the same tags and search functions as the website.
 
+No login needed:
+GET  search   type, q | paper,              the site's search: type is keyword, title or paper (similar to one
+              [since | date_filter],        paper, by arXiv ID). since is an exact time; date_filter is a site
+              [category], [cursor]          preset (default 1week)
+GET  papers   since, [cursor]               papers created or updated since a time
+
+Logged in (the site's session cookie) only, because they read or change the user's tags:
+GET  search   type=tag, tag, ...            papers similar to a tag's papers
 GET  tags                                   the user's tags
 GET  tag      tag, [cursor]                 papers in a tag, by arXiv ID
-GET  papers   since, [cursor]               papers created or updated since a time
-GET  search   type, q | paper | tag,        the site's search: type is keyword, title, paper (similar to one
-              [since | date_filter],        paper, by arXiv ID) or tag (similar to a tag's papers). since is an
-              [category], [cursor]          exact time; date_filter is a site preset (default 1week)
 GET  similar  tag, since, [cursor]          each tagged paper's 20 nearest papers created since a time,
                                             five tagged papers per page
 POST bulk_add     tag, arxiv_ids            add up to 200 papers to a tag, creating it if needed
@@ -78,21 +82,28 @@ def offset_page(papers, cursor):
     return response(page[:PAGE_SIZE], cursor + PAGE_SIZE if len(page) > PAGE_SIZE else None)
 
 
+def needs_login(action, params):
+    """Everything that reads or changes a user's tags; searching and listing papers are open to anyone."""
+    if action == "search":
+        return params.get("type") == "tag"
+    return action != "papers"
+
+
 @require_http_methods(["GET", "POST"])
 def api(request):
-    if not request.user.is_authenticated:
-        return error("Authentication required", 401)
     try:
         params = json.loads(request.body) if request.method == "POST" else request.GET
         if not hasattr(params, "get"):
             raise ValueError("Expected an object")
         action = params.get("action")
+        if action not in READS | WRITES:
+            raise ValueError("Unknown action")
+        if not request.user.is_authenticated and needs_login(action, params):
+            return error("Log in to use tags; search (keyword, title, paper) and papers need no login", 401)
         if action in WRITES:
             if request.method != "POST":
                 return error("POST required", 405)
             return update_tag(request.user, action, params)
-        if action not in READS:
-            raise ValueError("Unknown action")
         if request.method != "GET":
             return error("GET required", 405)
         if action == "tags":
