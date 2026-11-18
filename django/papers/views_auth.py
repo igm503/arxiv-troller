@@ -1,4 +1,4 @@
-from django.shortcuts import render, redirect, get_object_or_404
+from django.shortcuts import redirect, get_object_or_404
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
@@ -18,8 +18,8 @@ def login_view(request):
             )
             user.backend = "django.contrib.auth.backends.ModelBackend"
             auth_login(request, user)
-            return redirect("papers:search")
-    return render(request, "papers/login.html")
+    # The login form is in the header of every page, so there is no separate login page to show
+    return redirect("papers:search")
 
 
 def logout_view(request):

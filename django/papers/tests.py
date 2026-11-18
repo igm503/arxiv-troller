@@ -3,12 +3,16 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 from django.contrib.auth.models import User
-from django.test import SimpleTestCase, TestCase
+from django.db import OperationalError, connection, transaction
+from django.db.backends.signals import connection_created
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 from requests import Response
 from requests.utils import get_encoding_from_headers
 
-from papers import voyage4_search
+from psycopg2.errors import QueryCanceled
+
+from papers import ingestion_api, voyage4_search
 from papers.management.commands.add_voyage4_embeddings import Command as Voyage4Command
 from papers.management.commands.harvest_records import Command
 from papers.models import (
@@ -266,6 +270,56 @@ class PageTests(TestCase):
             self.assertEqual(self.keyword_ids(query), [], query)
         response = self.client.get("/api/", dict(action="search", type="keyword", q='"AGL(1,q)"', date_filter="all"))
         self.assertEqual([paper["arxiv_id"] for paper in response.json()["papers"]], ["punct"])
+
+    def test_search_prefixes_work_without_the_space(self):
+        for query in ["paper: test0", "paper:test0", "paper:+test0", "paper:   test0"]:
+            response = self.client.get("/", {"q": query, "date_filter": "1month"})
+            self.assertEqual([r["paper"].id for r in response.context["results"]], self.ids[1:5], query)
+        for query in ["title: Paper 3", "title:Paper 3"]:
+            response = self.client.get("/", {"q": query, "date_filter": "all"})
+            self.assertEqual([r["paper"].arxiv_id for r in response.context["results"]], ["test3"], query)
+        response = self.client.get("/", {"q": "paper:.24935"})
+        self.assertEqual(response.context["query_error"], "Paper with arXiv ID '.24935' does not exist")
+
+    def test_login_page_redirects_to_the_search_page(self):
+        for response in [self.client.get("/login/"), self.client.head("/login/"), self.client.post("/login/")]:
+            self.assertRedirects(response, "/", fetch_redirect_response=False)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertRedirects(self.client.post("/login/", {"email": "New@Example.com "}), "/", fetch_redirect_response=False)
+        self.assertEqual(User.objects.get(pk=self.client.session["_auth_user_id"]).username, "new@example.com")
+
+    def test_web_connections_get_a_statement_timeout(self):
+        from arxiv_troller.wsgi import configure_web_connection
+
+        self.addCleanup(connection_created.disconnect, configure_web_connection)
+        with override_settings(WEB_DB_SESSION={"statement_timeout": "50ms", "work_mem": "64MB"}):
+            configure_web_connection(connection=connection)
+        with connection.cursor() as cursor:
+            cursor.execute("SHOW work_mem")
+            self.assertEqual(cursor.fetchone()[0], "64MB")
+            with self.assertRaises(OperationalError) as raised, transaction.atomic():
+                cursor.execute("SELECT pg_sleep(2)")
+        self.assertIsInstance(raised.exception.__cause__, QueryCanceled)
+
+    def test_timed_out_query_gets_a_503_with_an_explanation(self):
+        def timed_out(context):
+            try:
+                raise QueryCanceled("canceling statement due to statement timeout")
+            except QueryCanceled as exc:
+                raise OperationalError(str(exc)) from exc
+
+        with patch("papers.views.keyword_search", timed_out), patch.dict(ingestion_api.SEARCHES, keyword=timed_out):
+            response = self.client.get("/", {"q": "abstract", "date_filter": "all"})
+            self.assertContains(response, "That search took too long", status_code=503)
+            self.assertContains(response, 'value="abstract"', status_code=503)
+            response = self.client.post("/", {"query_params": {"q": "abstract"}}, content_type="application/json",
+                                        HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+            self.assertEqual((response.status_code, response.json()["success"]), (503, False))
+            response = self.client.get("/api/", dict(action="search", type="keyword", q="abstract"))
+            self.assertEqual((response.status_code, response.json()["ok"]), (503, False))
+        with patch("papers.views.keyword_search", side_effect=OperationalError("connection lost")):
+            with self.assertRaises(OperationalError):
+                self.client.get("/", {"q": "abstract"})
 
 
 class IngestionApiTests(TestCase):

@@ -57,6 +57,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "papers.middleware.QueryTimeoutMiddleware",
 ]
 
 ROOT_URLCONF = "arxiv_troller.urls"
@@ -94,6 +95,11 @@ DATABASES = {
     }
 }
 
+# Postgres session settings for web requests only: wsgi.py applies them, so management commands such as
+# the harvest keep the server defaults. statement_timeout stops a query that would otherwise hold a worker
+# until gunicorn kills it (papers.middleware turns it into a 503); work_mem lets a broad keyword search
+# keep an exact bitmap instead of rechecking every row on a page; JIT costs more than it saves here.
+WEB_DB_SESSION = {"statement_timeout": "10s", "work_mem": "128MB", "jit": "off"}
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators

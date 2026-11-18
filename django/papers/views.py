@@ -158,12 +158,10 @@ def search(request):
     query_error = None
 
     if raw_query:
-        # Check for "tag: X" pattern (exactly one space after colon)
-        tag_match = re.match(r"^tag:\s(.+)$", raw_query)
-        # Check for "paper: X" pattern (exactly one space after colon)
-        paper_match = re.match(r"^paper:\s(.+)$", raw_query)
-        # Check for "title: X" pattern (exactly one space after colon)
-        title_match = re.match(r"^title:\s(.+)$", raw_query)
+        # "tag: X", "paper: X" and "title: X", with or without the space after the colon
+        tag_match = re.match(r"^tag:\s*(.+)$", raw_query)
+        paper_match = re.match(r"^paper:\s*(.+)$", raw_query)
+        title_match = re.match(r"^title:\s*(.+)$", raw_query)
         if tag_match:
             tag_name = tag_match.group(1)
             if request.user.is_authenticated:
@@ -176,7 +174,8 @@ def search(request):
             else:
                 query_error = "You must be logged in to search by tag"
         elif paper_match:
-            arxiv_id = paper_match.group(1).strip()
+            # Links that encode the space as a literal "+" arrive as "paper:+2301.12345"
+            arxiv_id = paper_match.group(1).strip().lstrip("+").strip()
             try:
                 paper = Paper.objects.get(arxiv_id=arxiv_id)
                 parsed_single_paper_id = str(paper.id)

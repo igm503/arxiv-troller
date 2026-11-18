@@ -83,7 +83,7 @@ The site serves a short description of the login-free part for programs and AI a
 - Papers are returned as `{arxiv_id, title, abstract, created, updated, categories}`.
 - Lists include `next_cursor`: pass it back as `cursor` for the next page. It is `null` on the last page.
 - Writes return `{tag, count, missing}`, where `missing` lists arXiv IDs that aren't in the database.
-- Errors return `{"ok": false, "error": ...}` with status 400 (bad input), 401 (that action needs a login) or 405 (wrong method).
+- Errors return `{"ok": false, "error": ...}` with status 400 (bad input), 401 (that action needs a login), 405 (wrong method) or 503 (the query ran past the 10 second limit).
 
 ```bash
 curl "https://arxiv-troller.com/api/?action=search&type=keyword&q=%22list+decoding%22&date_filter=all"
