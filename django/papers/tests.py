@@ -281,6 +281,19 @@ class PageTests(TestCase):
         response = self.client.get("/", {"q": "paper:.24935"})
         self.assertEqual(response.context["query_error"], "Paper with arXiv ID '.24935' does not exist")
 
+    def test_title_search_is_a_literal_case_insensitive_substring_match(self):
+        Paper.objects.create(arxiv_id="odd", created=timezone.now(), title="100% of C_3 \\ groups", abstract="x", categories=["math.GR"])
+        def titles(query):
+            response = self.client.get("/", {"q": "title: " + query, "date_filter": "all"})
+            return sorted(r["paper"].arxiv_id for r in response.context["results"])
+        self.assertEqual(titles("pAPER 3"), ["test3"])
+        self.assertEqual(titles("aper"), [f"test{i}" for i in range(6)])
+        self.assertEqual(titles("100% OF c_3 \\ g"), ["odd"])
+        for wildcard in ["Paper _", "P%3", "%", "_", "100_ of"]:
+            self.assertEqual(titles(wildcard), ["odd"] if wildcard in ("%", "_") else [], wildcard)
+        sql = str(Paper.objects.filter(title__ilike="%x%").query)
+        self.assertIn('"title" ILIKE', sql)
+
     def test_login_page_redirects_to_the_search_page(self):
         for response in [self.client.get("/login/"), self.client.head("/login/"), self.client.post("/login/")]:
             self.assertRedirects(response, "/", fetch_redirect_response=False)

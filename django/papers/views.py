@@ -298,7 +298,9 @@ def title_search(context):
     }
 
     valid_paper_query, _ = get_valid_papers(context)
-    papers = valid_paper_query.filter(title__icontains=query)
+    # ILIKE rather than icontains so that the trigram index on title is used; the user's text is literal
+    pattern = "%" + re.sub(r"([\\%_])", r"\\\1", query) + "%"
+    papers = valid_paper_query.filter(title__ilike=pattern)
     papers = papers.prefetch_related("authors").order_by("-created")
 
     papers = papers[:RESULTS_PER_PAGE]

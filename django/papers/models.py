@@ -6,6 +6,19 @@ from django.contrib.postgres.indexes import GinIndex
 from pgvector.django import HalfVectorField, BitField, HnswIndex
 
 
+@models.TextField.register_lookup
+class ILike(models.Lookup):
+    """title__ilike=pattern: Postgres ILIKE, which (unlike icontains, compiled to UPPER(x) LIKE UPPER(y)) can use
+    the trigram index on the column. The caller writes the % wildcards and escapes any in the user's text."""
+
+    lookup_name = "ilike"
+
+    def as_sql(self, compiler, connection):
+        lhs, lhs_params = self.process_lhs(compiler, connection)
+        rhs, rhs_params = self.process_rhs(compiler, connection)
+        return f"{lhs} ILIKE {rhs}", [*lhs_params, *rhs_params]
+
+
 class Author(models.Model):
     keyname = models.CharField(max_length=200)
     forenames = models.CharField(max_length=200, null=True, blank=True)
